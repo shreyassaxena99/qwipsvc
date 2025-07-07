@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -5,6 +7,7 @@ from svc.custom_types import DictWithStringKeys
 from svc.database_accessor import (create_supabase_client, end_session,
                                    get_pod_by_id, get_session,
                                    update_pod_status)
+from svc.env import log_level
 from svc.models import EndSessionRequest, GetPodResponse
 from svc.payments_manager import (charge_user, create_stripe_event,
                                   get_user_data, process_event)
@@ -19,6 +22,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+logging.basicConfig(level=log_level)
 
 RESPONSE_STATUS_SUCCESS = "success"
 RESPONSE_STATUS_FAILED = "failed"
