@@ -7,7 +7,7 @@ from stripe import Customer, Event, SetupIntent, StripeClient, Webhook
 
 from svc.custom_types import DictWithStringKeys
 from svc.database_accessor import (add_session, create_supabase_client,
-                                   get_pod_by_name, update_pod_status)
+                                   get_pod_by_id, update_pod_status)
 from svc.email_manager import send_access_email
 from svc.env import stripe_api_key, stripe_webhook_secret
 from svc.models import BookingDetails, PodSession
@@ -24,7 +24,7 @@ def _create_stripe_client() -> StripeClient:
     return StripeClient(stripe_api_key)
 
 
-def get_user_data(pod_name: str) -> SetupIntent:
+def get_user_data(pod_id: str) -> SetupIntent:
     """We create a setup intent for the user which we will use to save their metadata
     and payment methods for future billing.
 
@@ -34,11 +34,11 @@ def get_user_data(pod_name: str) -> SetupIntent:
     Returns:
         SetupIntent: Stripe SetupIntent Object
     """
-    logger.info(f"Creating setup intent for user attempting to use pod: {pod_name}")
+    logger.info(f"Creating setup intent for user attempting to use pod: {pod_id}")
     client = _create_stripe_client()
     customer = client.customers.create()
     return client.setup_intents.create(
-        customer=customer.id, usage="off_session", metadata={"pod_name": pod_name}
+        customer=customer.id, usage="off_session", metadata={"pod_id": pod_id}
     )
 
 
@@ -77,8 +77,8 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
     customer_id: str = event_metadata["customer"]
     customer: Customer = client.customers.retrieve(customer_id)
 
-    pod_name: str = event_metadata["metadata"].get("pod_name")
-    pod: DictWithStringKeys = get_pod_by_name(supabase, pod_name)
+    pod_id: str = event_metadata["metadata"].get("pod_id")
+    pod: DictWithStringKeys = get_pod_by_id(supabase, pod_id)
 
     payment_method: str = event_metadata["payment_method"]
 

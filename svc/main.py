@@ -8,7 +8,8 @@ from svc.database_accessor import (create_supabase_client, end_session,
                                    get_pod_by_id, get_session,
                                    update_pod_status)
 from svc.env import log_level
-from svc.models import EndSessionRequest, GetPodResponse
+from svc.models import (CreateSetupIntentResponse, EndSessionRequest,
+                        GetPodResponse)
 from svc.payments_manager import (charge_user, create_stripe_event,
                                   get_user_data, process_event)
 from svc.utils import get_session_cost
@@ -30,9 +31,12 @@ RESPONSE_STATUS_FAILED = "failed"
 
 
 @app.get("/api/create-setup-intent")
-def create_setup_intent_request(pod_name: str) -> DictWithStringKeys:
+def create_setup_intent_request(pod_id: str) -> CreateSetupIntentResponse:
     try:
-        return {"client_secret": get_user_data(pod_name).client_secret}
+        setup_intent = get_user_data(pod_id)
+        if not setup_intent.client_secret:
+            raise RuntimeError("Failed to create setup intent")
+        return CreateSetupIntentResponse(client_secret=setup_intent.client_secret)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -42,12 +46,12 @@ def get_pod_request(pod_id: str) -> GetPodResponse:
     try:
         supabase = create_supabase_client()
         pod = get_pod_by_id(supabase, pod_id)
-        return {
-            "name": pod["name"],
-            "address": pod["address"],
-            "price_per_minute": pod["price"],
-            "in_use": pod["in_use"],
-        }
+        return GetPodResponse(
+            name=pod["name"],
+            address=pod["address"],
+            price_per_minute=pod["price"],
+            in_use=pod["in_use"],
+        )
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 

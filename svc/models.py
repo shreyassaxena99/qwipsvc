@@ -14,6 +14,10 @@ class GetPodResponse(BaseModel):
     in_use: bool
 
 
+class CreateSetupIntentResponse(BaseModel):
+    client_secret: str
+
+
 class BookingDetails(BaseModel):
     booking_id: str
     address: str

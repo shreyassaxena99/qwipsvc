@@ -13,10 +13,10 @@ def test_get_user_data_creates_setup_intent(mock_create_client):
     mock_client.setup_intents.create.return_value = mock_setup_intent
     mock_create_client.return_value = mock_client
 
-    result = get_user_data("Pod-1")
+    result = get_user_data("abcdef")
     assert result == mock_setup_intent
     mock_client.setup_intents.create.assert_called_once_with(
-        customer="cus_test", usage="off_session", metadata={"pod_name": "Pod-1"}
+        customer="cus_test", usage="off_session", metadata={"pod_id": "abcdef"}
     )
 
 
