@@ -1,0 +1,13 @@
+[tool.pylint.'MAIN']
+py-version = "3.12"
+
+[tool.pylint.messages_control]
+disable = [
+    "broad-exception-caught",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "missing-module-docstring"
+]
+
+[tool.pylint.format]
+max-line-length = 100
