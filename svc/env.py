@@ -1,4 +1,7 @@
+from dotenv import load_dotenv
 import os
+
+load_dotenv()
 
 stripe_api_key = os.getenv("STRIPE_SECRET")
 stripe_webhook_secret = os.getenv("STRIPE_WEBHOOK_SECRET")

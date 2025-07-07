@@ -58,14 +58,25 @@ sequenceDiagram
 ```
 qwipsvc/
 ├── svc/
-│   └── main.py               ← FastAPI backend
+│   └── main.py                            ← FastAPI backend
+|   └── database_accessor.py               ← Supabase Accessors
+|   └── email_manager.py                   ← Email Manager
+|   └── env.py                             ← Environment Variable Store
+|   └── models.py                          ← Pydantic Models
+|   └── payments_manager.py                ← Stripe Handler
+|   └── seam_accessor.py                   ← Seam Accessor for Access Code Generation (Not Implemented)
+|   └── types.py                           ← Custom Types
+|   └── utils.py                           ← Util Functions
 ├── tests/
-│   └── test_basic.py         ← Unit & integration tests
-├── requirements.txt          ← Dependencies
-├── .env.example              ← Sample environment config
-├── .gitignore                ← Ignore sensitive files
-├── Procfile                  ← For Railway deployment
-└── Makefile                  ← For local dev commands
+│   └── unit                    
+│       └── conftest.py                    ← Pytest Fixtures
+│       └── test_email_manager.py         
+│       └── test_payments_manager.py 
+│       └── test_utils.py      
+├── requirements.txt                       ← Dependencies
+├── .env.example                           ← Sample environment config
+├── .gitignore                             ← Ignore sensitive files
+└── Makefile                               ← For local dev commands
 ```
 
 ---
@@ -94,7 +105,7 @@ Fill in your values:
 STRIPE_SECRET=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_SERVICE_ROLE=your-secret-key
+SUPABASE_KEY=your-secret-key
 EMAIL_PASSWORD=your-gmail-app-password
 ```
 
