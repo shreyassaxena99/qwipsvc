@@ -1,3 +1,4 @@
+import logging
 import smtplib
 from email.message import EmailMessage
 
@@ -6,6 +7,8 @@ from svc.models import BookingDetails
 
 HELLO_EMAIL = "shreyas@qwip.co.uk"
 APP_PASSWORD = email_password
+
+logger = logging.getLogger(__name__)
 
 
 def _create_email_message(customer_email: str, booking: BookingDetails) -> EmailMessage:
@@ -45,6 +48,6 @@ def send_access_email(customer_email: str, booking: BookingDetails):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
             smtp.login(HELLO_EMAIL, APP_PASSWORD)
             smtp.send_message(_create_email_message(customer_email, booking))
-        print(f"Email sent to {customer_email}")
+        logger.info(f"Email sent to {customer_email}")
     except Exception as e:
-        print(f"Failed to send email: {str(e)}")
+        logger.info(f"Failed to send email: {str(e)}")

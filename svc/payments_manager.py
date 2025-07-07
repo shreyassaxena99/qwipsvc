@@ -1,23 +1,26 @@
 # pylint: disable=unexpected-keyword-arg, no-value-for-parameter
-import uuid
+import logging
 from datetime import datetime, timezone
 from functools import cache
 
 from stripe import Customer, Event, SetupIntent, StripeClient, Webhook
 
+from svc.custom_types import DictWithStringKeys
 from svc.database_accessor import (add_session, create_supabase_client,
                                    get_pod_by_name, update_pod_status)
 from svc.email_manager import send_access_email
 from svc.env import stripe_api_key, stripe_webhook_secret
 from svc.models import BookingDetails, PodSession
 from svc.seam_accessor import get_access_code
-from svc.custom_types import DictWithStringKeys
 
 SETUP_INTENT_SUCCEDED_EVENT = "setup_intent.succeeded"
+
+logger = logging.getLogger(__name__)
 
 
 @cache
 def _create_stripe_client() -> StripeClient:
+    logger.debug("Creating Stripe client")
     return StripeClient(stripe_api_key)
 
 
@@ -31,6 +34,7 @@ def get_user_data(pod_name: str) -> SetupIntent:
     Returns:
         SetupIntent: Stripe SetupIntent Object
     """
+    logger.info(f"Creating setup intent for user attempting to use pod: {pod_name}")
     client = _create_stripe_client()
     customer = client.customers.create()
     return client.setup_intents.create(
@@ -66,6 +70,7 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
     including customer email and make some updates to the database, generate access code and
     send email to the user on the email address provided via Stripe.
     """
+    logger.info("Processing setup intent success event")
     event_metadata = event.data.object
     supabase = create_supabase_client()
 
@@ -115,6 +120,9 @@ def charge_user(session: DictWithStringKeys, cost_in_pence: int) -> None:
         session (DictWithStringKeys): Session Metadata
         cost_in_pence (int): Session Cost
     """
+    logger.info(
+        f"Charging user for session {session['id']} with cost {cost_in_pence} pence"
+    )
     _create_stripe_client().payment_intents.create(
         customer=session["stripe_customer_id"],
         payment_method=session["stripe_payment_method"],

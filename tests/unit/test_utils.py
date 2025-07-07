@@ -18,7 +18,7 @@ def test_fractional_cost():
     pod = {"price": 1.00}
 
     cost = get_session_cost(pod, session)
-    assert round(cost,2) == 1.50
+    assert round(cost, 2) == 1.50
 
 
 def test_zero_rate():
