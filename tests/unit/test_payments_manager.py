@@ -16,7 +16,11 @@ def test_get_user_data_creates_setup_intent(mock_create_client):
     result = get_user_data("abcdef")
     assert result == mock_setup_intent
     mock_client.setup_intents.create.assert_called_once_with(
-        customer="cus_test", usage="off_session", metadata={"pod_id": "abcdef"}
+        params={
+            "customer": "cus_test",
+            "usage": "off_session",
+            "metadata": {"pod_id": "abcdef"},
+        }
     )
 
 
@@ -58,10 +62,12 @@ def test_charge_user_creates_payment_intent(mock_create_client):
     charge_user(session_data, 420)
 
     mock_client.payment_intents.create.assert_called_once_with(
-        customer="cus_test",
-        payment_method="pm_test",
-        amount=420,
-        currency="gbp",
-        confirm=True,
-        off_session=True,
+        params={
+            "customer": "cus_test",
+            "payment_method": "pm_test",
+            "amount": 420,
+            "currency": "gbp",
+            "confirm": True,
+            "off_session": True,
+        }
     )

@@ -1,4 +1,3 @@
-# pylint: disable=unexpected-keyword-arg, no-value-for-parameter
 import logging
 from datetime import datetime, timezone
 from functools import cache
@@ -38,7 +37,11 @@ def get_user_data(pod_id: str) -> SetupIntent:
     client = _create_stripe_client()
     customer = client.customers.create()
     return client.setup_intents.create(
-        customer=customer.id, usage="off_session", metadata={"pod_id": pod_id}
+        params={
+            "customer": customer.id,
+            "usage": "off_session",
+            "metadata": {"pod_id": pod_id},
+        },
     )
 
 
@@ -124,10 +127,12 @@ def charge_user(session: DictWithStringKeys, cost_in_pence: int) -> None:
         f"Charging user for session {session['id']} with cost {cost_in_pence} pence"
     )
     _create_stripe_client().payment_intents.create(
-        customer=session["stripe_customer_id"],
-        payment_method=session["stripe_payment_method"],
-        amount=cost_in_pence,
-        currency="gbp",
-        confirm=True,
-        off_session=True,
+        params={
+            "customer": session["stripe_customer_id"],
+            "payment_method": session["stripe_payment_method"],
+            "amount": cost_in_pence,
+            "currency": "gbp",
+            "confirm": True,
+            "off_session": True,
+        }
     )
