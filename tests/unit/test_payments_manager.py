@@ -50,6 +50,7 @@ def test_charge_user_creates_payment_intent(mock_create_client):
     mock_create_client.return_value = mock_client
 
     session_data = {
+        "id": "session_123",
         "stripe_customer_id": "cus_test",
         "stripe_payment_method": "pm_test",
     }

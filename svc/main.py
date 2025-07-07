@@ -5,7 +5,7 @@ from svc.custom_types import DictWithStringKeys
 from svc.database_accessor import (create_supabase_client, end_session,
                                    get_pod_by_id, get_session,
                                    update_pod_status)
-from svc.models import EndSessionRequest
+from svc.models import EndSessionRequest, GetPodResponse
 from svc.payments_manager import (charge_user, create_stripe_event,
                                   get_user_data, process_event)
 from svc.utils import get_session_cost
@@ -33,14 +33,14 @@ def create_setup_intent_request(pod_name: str) -> DictWithStringKeys:
 
 
 @app.get("/api/pod")
-def get_pod_request(pod_id: str) -> DictWithStringKeys:
+def get_pod_request(pod_id: str) -> GetPodResponse:
     try:
         supabase = create_supabase_client()
         pod = get_pod_by_id(supabase, pod_id)
         return {
             "name": pod["name"],
             "address": pod["address"],
-            "price_per_hour": pod["price"],
+            "price_per_minute": pod["price"],
             "in_use": pod["in_use"],
         }
     except Exception as e:

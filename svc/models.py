@@ -7,6 +7,13 @@ class EndSessionRequest(BaseModel):
     session_id: str
 
 
+class GetPodResponse(BaseModel):
+    name: str
+    address: str
+    price_per_minute: float
+    in_use: bool
+
+
 class BookingDetails(BaseModel):
     booking_id: str
     address: str
