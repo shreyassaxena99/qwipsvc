@@ -1,1 +1,1 @@
-web: python svc/main.py
+web: uvicorn svc.main:app --host 0.0.0.0 --port $PORT

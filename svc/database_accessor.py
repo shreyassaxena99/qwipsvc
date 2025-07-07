@@ -5,7 +5,7 @@ from supabase import Client, create_client
 
 from svc.env import supabase_key, supabase_url
 from svc.models import PodSession
-from svc.types import DictWithStringKeys
+from svc.custom_types import DictWithStringKeys
 
 
 class SupabaseError(RuntimeError):

@@ -4,7 +4,7 @@ service:
 	uvicorn svc.main:app --reload
 
 test:
-	docker-compose up --build test-runner
+	pytest tests/ -vv
 
 format:
 	ruff check svc tests --fix

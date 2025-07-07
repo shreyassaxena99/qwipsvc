@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from svc.types import DictWithStringKeys
+from svc.custom_types import DictWithStringKeys
 
 
 def get_session_cost(pod: DictWithStringKeys, session: DictWithStringKeys) -> float:

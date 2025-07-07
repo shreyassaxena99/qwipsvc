@@ -11,7 +11,7 @@ from svc.email_manager import send_access_email
 from svc.env import stripe_api_key, stripe_webhook_secret
 from svc.models import BookingDetails, PodSession
 from svc.seam_accessor import get_access_code
-from svc.types import DictWithStringKeys
+from svc.custom_types import DictWithStringKeys
 
 SETUP_INTENT_SUCCEDED_EVENT = "setup_intent.succeeded"
 

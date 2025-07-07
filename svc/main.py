@@ -7,7 +7,7 @@ from svc.database_accessor import (create_supabase_client, end_session,
 from svc.models import EndSessionRequest
 from svc.payments_manager import (charge_user, create_stripe_event,
                                   get_user_data, process_event)
-from svc.types import DictWithStringKeys
+from svc.custom_types import DictWithStringKeys
 from svc.utils import get_session_cost
 
 app = FastAPI()
