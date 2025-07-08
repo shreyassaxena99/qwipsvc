@@ -2,7 +2,7 @@ import logging
 from datetime import datetime, timezone
 from functools import cache
 
-from stripe import Customer, Event, SetupIntent, StripeClient, Webhook
+from stripe import Event, SetupIntent, StripeClient, Webhook
 
 from svc.custom_types import DictWithStringKeys
 from svc.database_accessor import (add_session, create_supabase_client,
@@ -78,13 +78,15 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
     supabase = create_supabase_client()
 
     customer_id: str = event_metadata["customer"]
-    customer: Customer = client.customers.retrieve(customer_id)
-    logger.info(f"Retrieved customer: {customer.email}")
 
     pod_id: str = event_metadata["metadata"].get("pod_id")
     pod: DictWithStringKeys = get_pod_by_id(supabase, pod_id)
 
     payment_method: str = event_metadata["payment_method"]
+    payment_method_data = client.payment_methods.retrieve(payment_method)
+    customer_email = payment_method_data["billing_details"]["email"]
+
+    logger.info(f"Creating session for pod {pod_id} with customer {customer_email}")
 
     access_code = get_access_code()
 
@@ -92,7 +94,7 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
 
     session = PodSession(
         pod_id=pod["id"],
-        user_email=customer.email,
+        user_email=customer_email,
         start_time=start_time,
         stripe_customer_id=customer_id,
         stripe_payment_method=payment_method,
@@ -113,7 +115,7 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
         access_code=access_code,
     )
 
-    send_access_email(customer.email, booking)
+    send_access_email(customer_email, booking)
 
 
 def charge_user(session: DictWithStringKeys, cost_in_pence: int) -> None:
