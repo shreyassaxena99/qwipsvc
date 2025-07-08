@@ -115,7 +115,7 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
     logger.info(f"Updated pod status for {session.pod_id} to in use")
 
     booking = BookingDetails(
-        booking_id=session.session_id,
+        booking_id=session.id,
         address=pod["address"],
         start_time=start_time,
         access_code=access_code,
