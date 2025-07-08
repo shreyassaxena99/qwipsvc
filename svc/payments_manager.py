@@ -95,7 +95,7 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
     session = PodSession(
         pod_id=pod["id"],
         user_email=customer_email,
-        start_time=start_time,
+        start_time=start_time.isoformat(),
         stripe_customer_id=customer_id,
         stripe_payment_method=payment_method,
         access_code=access_code,
@@ -111,7 +111,7 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
     booking = BookingDetails(
         booking_id=session.session_id,
         address=pod["address"],
-        start_time=start_time,
+        start_time=start_time.isoformat(),
         access_code=access_code,
     )
 

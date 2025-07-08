@@ -59,7 +59,7 @@ def add_session(client: Client, session: PodSession) -> None:
                     "id": session.id,
                     "pod_id": session.pod_id,
                     "user_email": session.user_email,
-                    "start_time": session.start_time,
+                    "start_time": datetime.fromisoformat(session.start_time),
                     "end_time": None,
                     "stripe_customer_id": session.stripe_customer_id,
                     "stripe_payment_method": session.stripe_payment_method,

@@ -10,7 +10,7 @@ from svc.models import BookingDetails
 def sample_booking():
     return BookingDetails(
         address="8 Cutter Lane, London, UK",
-        start_time=datetime(2025, 7, 7, 14, 0),
+        start_time=datetime(2025, 7, 7, 14, 0).isoformat(),
         access_code="561671",
         booking_id="e6cf97",
     )
