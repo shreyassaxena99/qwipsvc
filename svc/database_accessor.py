@@ -56,7 +56,6 @@ def add_session(client: Client, session: PodSession) -> None:
             client.table("pod_sessions")
             .insert(
                 {
-                    "id": session.id,
                     "pod_id": session.pod_id,
                     "user_email": session.user_email,
                     "start_time": session.start_time.isoformat(),
