@@ -1,5 +1,5 @@
-import uuid
+import random
 
 
-def get_access_code() -> str:
-    return str(uuid.uuid4())[:6]
+def get_access_code() -> int:
+    return random.randint(100000, 999999)

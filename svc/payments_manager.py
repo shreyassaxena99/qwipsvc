@@ -79,6 +79,7 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
 
     customer_id: str = event_metadata["customer"]
     customer: Customer = client.customers.retrieve(customer_id)
+    logger.info(f"Retrieved customer: {customer.email}")
 
     pod_id: str = event_metadata["metadata"].get("pod_id")
     pod: DictWithStringKeys = get_pod_by_id(supabase, pod_id)
