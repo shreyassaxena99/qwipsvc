@@ -101,6 +101,8 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
         access_code=access_code,
     )
 
+    logger.info(f"Attempting to add session for customer {customer_email} to pod {pod_id}")
+
     add_session(supabase, session)
 
     if not session.id:
@@ -108,12 +110,16 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
 
     update_pod_status(supabase, session.pod_id, True)
 
+    logger.info(f"Updated pod status for {session.pod_id} to in use")
+
     booking = BookingDetails(
         booking_id=session.session_id,
         address=pod["address"],
         start_time=start_time.isoformat(),
         access_code=access_code,
     )
+
+    logger.info(f"Sending access email to {customer_email} for booking {booking.booking_id}")
 
     send_access_email(customer_email, booking)
 
