@@ -59,7 +59,7 @@ def add_session(client: Client, session: PodSession) -> None:
                     "id": session.id,
                     "pod_id": session.pod_id,
                     "user_email": session.user_email,
-                    "start_time": datetime.fromisoformat(session.start_time),
+                    "start_time": session.start_time.isoformat(),
                     "end_time": None,
                     "stripe_customer_id": session.stripe_customer_id,
                     "stripe_payment_method": session.stripe_payment_method,
@@ -80,7 +80,7 @@ def end_session(client: Client, session_id: str) -> None:
     logger.debug(f"Ending session with ID: {session_id}")
     try:
         client.table("pod_sessions").update(
-            {"end_time": datetime.now(timezone.utc)}
+            {"end_time": datetime.now(timezone.utc).isoformat()}
         ).eq("id", session_id).execute()
     except APIError as e:
         logger.error(f"Error ending session {session_id}: {e}")

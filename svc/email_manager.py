@@ -4,6 +4,7 @@ from email.message import EmailMessage
 
 from svc.env import email_password
 from svc.models import BookingDetails
+from svc.utils import format_datetime_for_email
 
 HELLO_EMAIL = "shreyas@qwip.co.uk"
 APP_PASSWORD = email_password
@@ -13,8 +14,9 @@ logger = logging.getLogger(__name__)
 
 def _create_email_message(customer_email: str, booking: BookingDetails) -> EmailMessage:
     message = EmailMessage()
+    formatted_start_time = format_datetime_for_email(booking.start_time.isoformat())
     message["Subject"] = (
-        f"Your Qwip Booking at {booking.address} from {booking.start_time}"
+        f"Your Qwip Booking at {booking.address} from {formatted_start_time}"
     )
     message["From"] = HELLO_EMAIL
     message["To"] = customer_email

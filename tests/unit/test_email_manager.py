@@ -13,6 +13,9 @@ def test_send_access_email_sends_successfully(mock_smtp_ssl, sample_booking):
     mock_smtp.login.assert_called_once()
     sent_message = mock_smtp.send_message.call_args[0][0]
 
-    assert "Your Qwip Booking at 8 Cutter Lane" in sent_message["Subject"]
+    assert (
+        sent_message["subject"]
+        == "Your Qwip Booking at 8 Cutter Lane, London, UK from 7th July 2025 @ 2PM"
+    )
     assert sent_message["To"] == "user@example.com"
     assert "**Access Code**: 561671" in sent_message.get_content()

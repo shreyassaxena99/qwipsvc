@@ -70,7 +70,7 @@ async def stripe_webhook(request: Request) -> DictWithStringKeys:
 
         return {"status": RESPONSE_STATUS_SUCCESS}
     except Exception as e:
-        return {"status": RESPONSE_STATUS_FAILED, "error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 @app.get("/api/end-session-preview")

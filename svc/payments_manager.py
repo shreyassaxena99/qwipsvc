@@ -95,13 +95,15 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
     session = PodSession(
         pod_id=pod["id"],
         user_email=customer_email,
-        start_time=start_time.isoformat(),
+        start_time=start_time,
         stripe_customer_id=customer_id,
         stripe_payment_method=payment_method,
         access_code=access_code,
     )
 
-    logger.info(f"Attempting to add session for customer {customer_email} to pod {pod_id}")
+    logger.info(
+        f"Attempting to add session for customer {customer_email} to pod {pod_id}"
+    )
 
     add_session(supabase, session)
 
@@ -115,11 +117,13 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
     booking = BookingDetails(
         booking_id=session.session_id,
         address=pod["address"],
-        start_time=start_time.isoformat(),
+        start_time=start_time,
         access_code=access_code,
     )
 
-    logger.info(f"Sending access email to {customer_email} for booking {booking.booking_id}")
+    logger.info(
+        f"Sending access email to {customer_email} for booking {booking.booking_id}"
+    )
 
     send_access_email(customer_email, booking)
 
