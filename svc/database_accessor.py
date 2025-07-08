@@ -92,7 +92,7 @@ def update_pod_status(client: Client, pod_id: str, in_use_status: bool) -> None:
     )
     try:
         client.table("pods").update({"in_use": in_use_status}).eq(
-            "pod_id", pod_id
+            "id", pod_id
         ).execute()
     except APIError as e:
         logger.error(f"Error updating pod {pod_id} status: {e}")
