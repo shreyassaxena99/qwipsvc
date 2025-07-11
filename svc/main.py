@@ -29,6 +29,8 @@ logging.basicConfig(level=log_level)
 RESPONSE_STATUS_SUCCESS = "success"
 RESPONSE_STATUS_FAILED = "failed"
 
+logger = logging.getLogger(__name__)
+
 
 @app.get("/api/create-setup-intent")
 def create_setup_intent_request(pod_id: str) -> CreateSetupIntentResponse:
@@ -94,11 +96,23 @@ def end_session_preview_request(session_id: str) -> DictWithStringKeys:
 def end_session_request(request: EndSessionRequest) -> DictWithStringKeys:
     try:
         supabase = create_supabase_client()
+
         session_metadata = get_session(supabase, request.session_id)
+        logger.info("Retrieved session metadata for {request.session_id}")
+
         pod = get_pod_by_id(supabase, session_metadata["pod_id"])
+        logger.info(f"Retrieved pod metadata for {session_metadata['pod_id']}")
+
         session_cost_pence = get_session_cost(pod, session_metadata) * 100
+        logger.info(f"Calculated session cost: {session_cost_pence} pence")
+
+        logger.info("Attempting to charge user")
         charge_user(session_metadata, session_cost_pence)
+
+        logger.info("Charging user successful, ending session")
         end_session(supabase, request.session_id)
+
+        logger.info("Session ended successfully, updating pod status")
         update_pod_status(supabase, session_metadata["pod_id"], False)
         return {"status": RESPONSE_STATUS_SUCCESS}
     except Exception as e:
