@@ -103,7 +103,7 @@ def end_session_request(request: EndSessionRequest) -> DictWithStringKeys:
         pod = get_pod_by_id(supabase, session_metadata["pod_id"])
         logger.info(f"Retrieved pod metadata for {session_metadata['pod_id']}")
 
-        session_cost_pence = get_session_cost(pod, session_metadata) * 100
+        session_cost_pence = round(get_session_cost(pod, session_metadata) * 100)
         logger.info(f"Calculated session cost: {session_cost_pence} pence")
 
         logger.info("Attempting to charge user")
