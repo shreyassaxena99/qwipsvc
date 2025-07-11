@@ -1,55 +1,57 @@
 import logging
-import smtplib
-from email.message import EmailMessage
 
-from svc.env import email_password
+import resend
+
+from svc.env import resend_api_key
 from svc.models import BookingDetails
 from svc.utils import format_datetime_for_email
 
 HELLO_EMAIL = "shreyas@qwip.co.uk"
-APP_PASSWORD = email_password
+
+resend.api_key = resend_api_key
 
 logger = logging.getLogger(__name__)
 
 
-def _create_email_message(customer_email: str, booking: BookingDetails) -> EmailMessage:
-    message = EmailMessage()
+def _create_email_message(booking: BookingDetails) -> dict[str, str]:
     formatted_start_time = format_datetime_for_email(booking.start_time.isoformat())
-    message["Subject"] = (
-        f"Your Qwip Booking at {booking.address} from {formatted_start_time}"
-    )
-    message["From"] = HELLO_EMAIL
-    message["To"] = customer_email
-    message.set_content(
-        f"""
-Hi there!
+    subject = f"Your Qwip Booking at {booking.address} from {formatted_start_time}"
+    content = f"""
+<p>Hi there!</p><br>
                         
-Thanks for booking with Qwip! Your booking details are shown below
+<p>Thanks for booking with Qwip! Your booking details are shown below</p><br>
     
-**Start Time**: {booking.start_time}
-**Access Code**: {booking.access_code}
+<strong>Start Time: {booking.start_time}</strong><br>
+<strong>Access Code: {booking.access_code}</strong><br>
 
-To access your workspace, please go to {booking.address}, and enter your access
-code on the booth. 
+<p>To access your workspace, please go to {booking.address}, and enter your access
+code on the booth.<p><br>
 
-**Please make sure you press the Yale Button to enter your access code once typed**.
+<strong>Please make sure you press the Yale Button to enter your access code once typed</strong>.<br>
 
-Once done with using the workspace, please click the link below to end your booking:
+<strong>Once done with using the workspace, please click the button below to end your booking:<strong><br>
 
-https://qwip.co.uk/end_booking/{booking.booking_id}
+<form action="https://qwip.co.uk/end-session/{booking.booking_id}">
+    <input type="submit" value="End Booking Now" />
+</form>
 
-Thank You for using Qwip!
+<p>Thank You for using Qwip!</p><br>
     """.strip()
-    )
 
-    return message
+    return {"subject": subject, "content": content}
 
 
 def send_access_email(customer_email: str, booking: BookingDetails):
-    try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-            smtp.login(HELLO_EMAIL, APP_PASSWORD)
-            smtp.send_message(_create_email_message(customer_email, booking))
-        logger.info(f"Email sent to {customer_email}")
-    except Exception as e:
-        logger.info(f"Failed to send email: {str(e)}")
+    message_metadata = _create_email_message(booking)
+
+    r: resend.Email = resend.Emails.send(
+        {
+            "from": HELLO_EMAIL,
+            "to": customer_email,
+            "subject": message_metadata["subject"],
+            "html": message_metadata["content"],
+        }
+    )
+
+    if r.id:
+        logger.info(f"Email sent successfully to {customer_email} with ID: {r.id}")
