@@ -20,6 +20,7 @@ class CreateSetupIntentResponse(BaseModel):
 
 class BookingDetails(BaseModel):
     booking_id: str
+    pod_name: str
     address: str
     start_time: datetime
     access_code: int

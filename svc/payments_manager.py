@@ -65,7 +65,7 @@ def process_event(event: Event) -> None:
     if event.type == SETUP_INTENT_SUCCEDED_EVENT:
         _process_setup_intent_success(client, event)
     else:
-        raise ValueError(f"Unhandled event type: {event.type}")
+        logger.info(f"Unhandled event type: {event.type}")
 
 
 def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
@@ -116,6 +116,7 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
 
     booking = BookingDetails(
         booking_id=session.id,
+        pod_name=pod["name"],
         address=pod["address"],
         start_time=start_time,
         access_code=access_code,

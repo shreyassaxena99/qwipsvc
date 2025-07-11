@@ -15,28 +15,43 @@ logger = logging.getLogger(__name__)
 
 def _create_email_message(booking: BookingDetails) -> dict[str, str]:
     formatted_start_time = format_datetime_for_email(booking.start_time.isoformat())
-    subject = f"Your Qwip Booking at {booking.address} from {formatted_start_time}"
+    subject = f"Your Qwip Booking at {booking.pod_name} from {formatted_start_time}"
+
     content = f"""
-<p>Hi there!</p><br>
-                        
-<p>Thanks for booking with Qwip! Your booking details are shown below</p><br>
-    
-<strong>Start Time: {booking.start_time}</strong><br>
-<strong>Access Code: {booking.access_code}</strong><br>
+<html>
+  <body style="font-family: Arial, sans-serif; background-color: #FAFAF8; padding: 20px; margin: 0;">
+    <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 30px; border-radius: 8px;">
+      <h2 style="color: #3D2A1A;">Thanks for booking with Qwip!</h2>
+      <p>Your booking details are shown below:</p>
 
-<p>To access your workspace, please go to {booking.address}, and enter your access
-code on the booth.<p><br>
+      <p><strong>Start Time:</strong> {booking.start_time}</p>
+      <p><strong>Access Code:</strong> {booking.access_code}</p>
 
-<strong>Please make sure you press the Yale Button to enter your access code once typed</strong>.<br>
+      <p>To access your workspace, please go to <strong>{booking.address}</strong> and enter your access code on the booth keypad.</p>
 
-<strong>Once done with using the workspace, please click the button below to end your booking:<strong><br>
+      <p><strong>Important:</strong> After typing your code, press the <strong>Yale button</strong> to confirm and unlock the door.</p>
 
-<form action="https://qwip.co.uk/end-session/{booking.booking_id}">
-    <input type="submit" value="End Booking Now" />
-</form>
+      <p>Once you're done, click the button below to end your booking:</p>
 
-<p>Thank You for using Qwip!</p><br>
-    """.strip()
+      <a href="https://qwip.co.uk/end-session/{booking.booking_id}"
+         style="display:inline-block; padding:12px 20px; margin-top:15px; background-color:#8C4F1D; color:#ffffff; text-decoration:none; border-radius:6px; font-weight:bold;">
+        End Booking Now
+      </a>
+
+      <p style="margin-top: 30px;">Thank you for using Qwip!</p>
+
+      <hr style="border: none; border-top: 1px solid #eee; margin: 40px 0;" />
+
+      <p style="font-size: 12px; color: #777;">
+        © 2025 Qwip Ltd. All rights reserved.<br />
+        <a href="https://qwip.co.uk/privacy" style="color: #777; text-decoration: underline;">Privacy Policy</a> | 
+        <a href="https://qwip.co.uk/contact" style="color: #777; text-decoration: underline;">Contact Us</a><br />
+        Qwip Ltd, 8 Cutter Lane, London, UK
+      </p>
+    </div>
+  </body>
+</html>
+"""
 
     return {"subject": subject, "content": content}
 
