@@ -53,5 +53,5 @@ def send_access_email(customer_email: str, booking: BookingDetails):
         }
     )
 
-    if r.id:
-        logger.info(f"Email sent successfully to {customer_email} with ID: {r.id}")
+    if r["id"]:
+        logger.info(f"Email sent successfully to {customer_email} with ID: {r["id"]}")
