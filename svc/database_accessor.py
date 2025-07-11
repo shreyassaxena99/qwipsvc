@@ -102,10 +102,7 @@ def update_pod_status(client: Client, pod_id: str, in_use_status: bool) -> None:
 def get_session(client: Client, session_id: str) -> DictWithStringKeys:
     try:
         matching_sessions = (
-            client.table("pod_sessions")
-            .select("*")
-            .eq("session_id", session_id)
-            .execute()
+            client.table("pod_sessions").select("*").eq("id", session_id).execute()
         )
 
         if not matching_sessions.data:
