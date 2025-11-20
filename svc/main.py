@@ -129,4 +129,4 @@ def end_session_request(request: EndSessionRequest) -> DictWithStringKeys:
         update_pod_status(supabase, session_metadata["pod_id"], False)
         return {"status": RESPONSE_STATUS_SUCCESS}
     except Exception as e:
-        return {"status": RESPONSE_STATUS_FAILED, "error": str(e)}
+        raise HTTPException(status_code=404, detail=str(e)) from e
