@@ -48,7 +48,7 @@ def get_pod_by_id(client: Client, pod_id: str) -> DictWithStringKeys:
 
 
 def add_session(client: Client, session: PodSession) -> None:
-    logger.debug(
+    logger.info(
         f"Adding session for pod {session.pod_id} and user {session.user_email}"
     )
     try:
@@ -74,6 +74,9 @@ def add_session(client: Client, session: PodSession) -> None:
     except APIError as e:
         logger.error(f"Error adding session: {e}")
         raise SupabaseError("Failed to add session to the database") from e
+    except Exception as e:
+        logger.error(f"Unexpected error adding session: {e}")
+        raise
 
 
 def end_session(client: Client, session_id: str) -> None:
