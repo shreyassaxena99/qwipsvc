@@ -63,6 +63,7 @@ def add_session(client: Client, session: PodSession) -> None:
                     "stripe_customer_id": session.stripe_customer_id,
                     "stripe_payment_method": session.stripe_payment_method,
                     "access_code_id": session.access_code_id,
+                    "stripe_setup_intent_id": session.stripe_setup_intent_id,
                 }
             )
             .execute()
@@ -112,3 +113,24 @@ def get_session(client: Client, session_id: str) -> DictWithStringKeys:
     except APIError as e:
         logger.error(f"Error fetching session {session_id}: {e}")
         raise SupabaseError(f"Failed to find session with {session_id=}") from e
+
+def get_access_code_id_for_setup_intent_id(client: Client, setup_intent_id: str) -> str:
+    try:
+        matching_sessions = (
+            client.table("pod_sessions")
+            .select("access_code_id")
+            .eq("stripe_setup_intent_id", setup_intent_id)
+            .execute()
+        )
+
+        if not matching_sessions.data:
+            raise SupabaseError(
+                f"No matching sessions found with {setup_intent_id=}"
+            )
+
+        return matching_sessions.data[0]["access_code_id"]
+    except APIError as e:
+        logger.error(f"Error fetching session for setup intent {setup_intent_id}: {e}")
+        raise SupabaseError(
+            f"Failed to find session with {setup_intent_id=}"
+        ) from e

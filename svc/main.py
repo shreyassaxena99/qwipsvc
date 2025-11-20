@@ -10,6 +10,7 @@ from svc.database_accessor import (
     get_pod_by_id,
     get_session,
     update_pod_status,
+    get_access_code_id_for_setup_intent_id,
 )
 from svc.env import log_level
 from svc.models import CreateSetupIntentResponse, EndSessionRequest, GetPodResponse
@@ -20,7 +21,7 @@ from svc.payments_manager import (
     process_event,
 )
 from svc.utils import get_session_cost
-from svc.seam_accessor import delete_access_code
+from svc.seam_accessor import delete_access_code, get_access_code
 
 app = FastAPI()
 
@@ -96,6 +97,21 @@ def end_session_preview_request(session_id: str) -> DictWithStringKeys:
             "start_time": session_metadata["start_time"],
             "cost": round(session_cost, 2),
         }
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@app.get("/api/get-access-code")
+def get_access_code_request(setup_intent_id: str) -> DictWithStringKeys:
+    try:
+        supabase = create_supabase_client()
+        logger.info(f"Fetching access code ID for setup intent ID: {setup_intent_id}")
+        access_code_id = get_access_code_id_for_setup_intent_id(
+            supabase, setup_intent_id
+        )
+        logger.info(f"Retrieved access code ID: {access_code_id}")
+        access_code = get_access_code(access_code_id)
+        return {"access_code": access_code}
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 

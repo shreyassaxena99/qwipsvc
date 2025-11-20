@@ -103,6 +103,7 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
         stripe_customer_id=customer_id,
         stripe_payment_method=payment_method,
         access_code_id=access_code_id,
+        setup_intent_id=event_metadata["id"],
     )
 
     logger.info(

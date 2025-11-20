@@ -33,3 +33,4 @@ class PodSession(BaseModel):
     stripe_customer_id: str
     stripe_payment_method: str
     access_code_id: str
+    setup_intent_id: str
