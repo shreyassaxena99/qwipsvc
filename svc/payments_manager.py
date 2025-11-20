@@ -141,6 +141,12 @@ def charge_user(session: DictWithStringKeys, cost_in_pence: int) -> None:
         session (DictWithStringKeys): Session Metadata
         cost_in_pence (int): Session Cost
     """
+    if cost_in_pence < 30:
+        logger.error(
+            "Cost must be at least 30 pence to cover Stripe fees, not charging the user"
+        )
+        return
+
     logger.info(
         f"Charging user for session {session['id']} with cost {cost_in_pence} pence"
     )
