@@ -5,12 +5,16 @@ from functools import cache
 from stripe import Event, SetupIntent, StripeClient, Webhook
 
 from svc.custom_types import DictWithStringKeys
-from svc.database_accessor import (add_session, create_supabase_client,
-                                   get_pod_by_id, update_pod_status)
+from svc.database_accessor import (
+    add_session,
+    create_supabase_client,
+    get_pod_by_id,
+    update_pod_status,
+)
 from svc.email_manager import send_access_email
 from svc.env import stripe_api_key, stripe_webhook_secret
 from svc.models import BookingDetails, PodSession
-from svc.seam_accessor import get_access_code
+from svc.seam_accessor import set_access_code, get_access_code
 
 SETUP_INTENT_SUCCEDED_EVENT = "setup_intent.succeeded"
 
@@ -88,7 +92,7 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
 
     logger.info(f"Creating session for pod {pod_id} with customer {customer_email}")
 
-    access_code = get_access_code()
+    access_code_id = set_access_code(datetime.now(timezone.utc))
 
     start_time = datetime.now(timezone.utc)
 
@@ -98,7 +102,7 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
         start_time=start_time,
         stripe_customer_id=customer_id,
         stripe_payment_method=payment_method,
-        access_code=access_code,
+        access_code_id=access_code_id,
     )
 
     logger.info(
@@ -119,7 +123,7 @@ def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
         pod_name=pod["name"],
         address=pod["address"],
         start_time=start_time,
-        access_code=access_code,
+        access_code=get_access_code(access_code_id),
     )
 
     logger.info(

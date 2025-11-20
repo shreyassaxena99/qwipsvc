@@ -4,15 +4,23 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 
 from svc.custom_types import DictWithStringKeys
-from svc.database_accessor import (create_supabase_client, end_session,
-                                   get_pod_by_id, get_session,
-                                   update_pod_status)
+from svc.database_accessor import (
+    create_supabase_client,
+    end_session,
+    get_pod_by_id,
+    get_session,
+    update_pod_status,
+)
 from svc.env import log_level
-from svc.models import (CreateSetupIntentResponse, EndSessionRequest,
-                        GetPodResponse)
-from svc.payments_manager import (charge_user, create_stripe_event,
-                                  get_user_data, process_event)
+from svc.models import CreateSetupIntentResponse, EndSessionRequest, GetPodResponse
+from svc.payments_manager import (
+    charge_user,
+    create_stripe_event,
+    get_user_data,
+    process_event,
+)
 from svc.utils import get_session_cost
+from svc.seam_accessor import delete_access_code
 
 app = FastAPI()
 
@@ -109,10 +117,15 @@ def end_session_request(request: EndSessionRequest) -> DictWithStringKeys:
         logger.info("Attempting to charge user")
         charge_user(session_metadata, session_cost_pence)
 
-        logger.info("Charging user successful, ending session")
+        logger.info("Charging user successful, ending session on database-side")
         end_session(supabase, request.session_id)
 
-        logger.info("Session ended successfully, updating pod status")
+        logger.info(
+            "Session ended on database-side successfully, now deleting access code"
+        )
+        delete_access_code(session_metadata["access_code_id"])
+
+        logger.info("Access code deleted successfully, updating pod status")
         update_pod_status(supabase, session_metadata["pod_id"], False)
         return {"status": RESPONSE_STATUS_SUCCESS}
     except Exception as e:
