@@ -183,7 +183,7 @@ def get_session_status_request(session_id: str) -> DictWithStringKeys:
         logger.info(f"Fetching session metadata for session ID: {session_id}")
         session_metadata = get_session(supabase, session_id)
 
-        return {"session_status": session_metadata["end_time"] is not None}
+        return {"is_complete": session_metadata["end_time"] is not None}
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
