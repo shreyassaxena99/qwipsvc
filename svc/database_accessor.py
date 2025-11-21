@@ -63,7 +63,7 @@ def add_session(client: Client, session: PodSession) -> None:
                     "stripe_customer_id": session.stripe_customer_id,
                     "stripe_payment_method": session.stripe_payment_method,
                     "access_code_id": session.access_code_id,
-                    "stripe_setup_intent_id": session.stripe_setup_intent_id,
+                    "stripe_setup_intent_id": session.setup_intent_id,
                 }
             )
             .execute()
