@@ -176,17 +176,14 @@ def end_session_preview_request(session_id: str) -> DictWithStringKeys:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
-@app.get("/api/get-access-code")
-def get_access_code_request(setup_intent_id: str) -> DictWithStringKeys:
+@app.get("/api/is-session-complete")
+def get_session_status_request(session_id: str) -> DictWithStringKeys:
     try:
         supabase = create_supabase_client()
-        logger.info(f"Fetching access code ID for setup intent ID: {setup_intent_id}")
-        access_code_id = get_access_code_id_for_setup_intent_id(
-            supabase, setup_intent_id
-        )
-        logger.info(f"Retrieved access code ID: {access_code_id}")
-        access_code = get_access_code(access_code_id)
-        return {"access_code": access_code}
+        logger.info(f"Fetching session metadata for session ID: {session_id}")
+        session_metadata = get_session(supabase, session_id)
+
+        return {"session_status": session_metadata["end_time"] is not None}
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
@@ -197,7 +194,7 @@ def end_session_request(request: EndSessionRequest) -> DictWithStringKeys:
         supabase = create_supabase_client()
 
         session_metadata = get_session(supabase, request.session_id)
-        logger.info("Retrieved session metadata for {request.session_id}")
+        logger.info(f"Retrieved session metadata for {request.session_id}")
 
         pod = get_pod_by_id(supabase, session_metadata["pod_id"])
         logger.info(f"Retrieved pod metadata for {session_metadata['pod_id']}")
