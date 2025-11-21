@@ -6,6 +6,10 @@ class EndSessionRequest(BaseModel):
     session_id: str
 
 
+class ConfirmBookingRequest(BaseModel):
+    setup_intent_id: str
+
+
 class GetPodResponse(BaseModel):
     name: str
     address: str

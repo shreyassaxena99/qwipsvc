@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 @cache
-def _create_stripe_client() -> StripeClient:
+def create_stripe_client() -> StripeClient:
     logger.debug("Creating Stripe client")
     return StripeClient(stripe_api_key)
 
@@ -38,7 +38,7 @@ def get_user_data(pod_id: str) -> SetupIntent:
         SetupIntent: Stripe SetupIntent Object
     """
     logger.info(f"Creating setup intent for user attempting to use pod: {pod_id}")
-    client = _create_stripe_client()
+    client = create_stripe_client()
     customer = client.customers.create()
     return client.setup_intents.create(
         params={
@@ -65,73 +65,7 @@ def create_stripe_event(payload: dict, header: str | None) -> Event:
 
 
 def process_event(event: Event) -> None:
-    client = _create_stripe_client()
-    if event.type == SETUP_INTENT_SUCCEDED_EVENT:
-        _process_setup_intent_success(client, event)
-    else:
-        logger.info(f"Unhandled event type: {event.type}")
-
-
-def _process_setup_intent_success(client: StripeClient, event: Event) -> None:
-    """Logic for processing a successful setup intent event. Once received we take event metadata
-    including customer email and make some updates to the database, generate access code and
-    send email to the user on the email address provided via Stripe.
-    """
-    logger.info("Processing setup intent success event")
-    event_metadata = event.data.object
-    supabase = create_supabase_client()
-
-    customer_id: str = event_metadata["customer"]
-
-    pod_id: str = event_metadata["metadata"].get("pod_id")
-    pod: DictWithStringKeys = get_pod_by_id(supabase, pod_id)
-
-    payment_method: str = event_metadata["payment_method"]
-    payment_method_data = client.payment_methods.retrieve(payment_method)
-    customer_email = payment_method_data["billing_details"]["email"]
-
-    logger.info(f"Creating session for pod {pod_id} with customer {customer_email}")
-
-    access_code_id = set_access_code(datetime.now(timezone.utc))
-
-    start_time = datetime.now(timezone.utc)
-
-    session = PodSession(
-        pod_id=pod["id"],
-        user_email=customer_email,
-        start_time=start_time,
-        stripe_customer_id=customer_id,
-        stripe_payment_method=payment_method,
-        access_code_id=access_code_id,
-        setup_intent_id=event_metadata["id"],
-    )
-
-    logger.info(
-        f"Attempting to add session for customer {customer_email} to pod {pod_id}"
-    )
-
-    add_session(supabase, session)
-
-    if not session.id:
-        raise RuntimeError("Failed to add session to the database")
-
-    update_pod_status(supabase, session.pod_id, True)
-
-    logger.info(f"Updated pod status for {session.pod_id} to in use")
-
-    booking = BookingDetails(
-        booking_id=session.id,
-        pod_name=pod["name"],
-        address=pod["address"],
-        start_time=start_time,
-        access_code=get_access_code(access_code_id),
-    )
-
-    logger.info(
-        f"Sending access email to {customer_email} for booking {booking.booking_id}"
-    )
-
-    send_access_email(customer_email, booking)
+    logger.info(f"Unhandled event type: {event.type}")
 
 
 def charge_user(session: DictWithStringKeys, cost_in_pence: int) -> None:
@@ -151,7 +85,7 @@ def charge_user(session: DictWithStringKeys, cost_in_pence: int) -> None:
     logger.info(
         f"Charging user for session {session['id']} with cost {cost_in_pence} pence"
     )
-    _create_stripe_client().payment_intents.create(
+    create_stripe_client().payment_intents.create(
         params={
             "customer": session["stripe_customer_id"],
             "payment_method": session["stripe_payment_method"],
