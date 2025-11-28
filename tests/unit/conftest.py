@@ -19,5 +19,5 @@ def sample_booking():
 
 @pytest.fixture
 def mock_stripe_client():
-    with patch("svc.payments_manager._create_stripe_client") as mock:
+    with patch("svc.payments_manager.create_stripe_client") as mock:
         yield mock

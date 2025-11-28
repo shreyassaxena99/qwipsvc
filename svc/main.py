@@ -171,6 +171,7 @@ def end_session_preview_request(session_id: str) -> DictWithStringKeys:
             "is_complete": session_metadata["end_time"] is not None,
             "pod_name": pod["name"],
             "start_time": session_metadata["start_time"],
+            "end_time": session_metadata.get("end_time"),
             "cost": round(session_cost, 2),
         }
     except Exception as e:

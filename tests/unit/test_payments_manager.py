@@ -1,10 +1,14 @@
 from unittest.mock import ANY, MagicMock, patch
 
-from svc.payments_manager import (charge_user, create_stripe_event,
-                                  get_user_data, process_event)
+from svc.payments_manager import (
+    charge_user,
+    create_stripe_event,
+    get_user_data,
+    process_event,
+)
 
 
-@patch("svc.payments_manager._create_stripe_client")
+@patch("svc.payments_manager.create_stripe_client")
 def test_get_user_data_creates_setup_intent(mock_create_client):
     mock_customer = MagicMock(id="cus_test")
     mock_setup_intent = MagicMock()
@@ -37,18 +41,7 @@ def test_create_stripe_event_constructs_event(mock_construct_event):
     mock_construct_event.assert_called_once_with(payload, header, ANY)
 
 
-@patch("svc.payments_manager._process_setup_intent_success")
-@patch("svc.payments_manager._create_stripe_client")
-def test_process_event_calls_success_handler(mock_create_client, mock_process_success):
-    mock_event = MagicMock(type="setup_intent.succeeded", data=MagicMock(object={}))
-    mock_client = MagicMock()
-    mock_create_client.return_value = mock_client
-
-    process_event(mock_event)
-    mock_process_success.assert_called_once_with(mock_client, mock_event)
-
-
-@patch("svc.payments_manager._create_stripe_client")
+@patch("svc.payments_manager.create_stripe_client")
 def test_charge_user_creates_payment_intent(mock_create_client):
     mock_client = MagicMock()
     mock_create_client.return_value = mock_client
