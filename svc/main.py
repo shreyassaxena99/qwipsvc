@@ -168,6 +168,7 @@ def end_session_preview_request(session_id: str) -> DictWithStringKeys:
         session_cost = get_session_cost(pod, session_metadata)
 
         return {
+            "is_complete": session_metadata["end_time"] is not None,
             "pod_name": pod["name"],
             "start_time": session_metadata["start_time"],
             "cost": round(session_cost, 2),
