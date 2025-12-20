@@ -13,7 +13,7 @@ from svc.database_accessor import (
 )
 from svc.email_manager import send_access_email
 from svc.env import stripe_api_key, stripe_webhook_secret
-from svc.models import BookingDetails, PodSession
+from svc.models import SessionDetails, PodSession
 from svc.seam_accessor import set_access_code, get_access_code
 
 SETUP_INTENT_SUCCEDED_EVENT = "setup_intent.succeeded"

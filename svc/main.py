@@ -22,7 +22,8 @@ from svc.email_manager import send_access_email
 from svc.env import log_level
 from svc.jwt_manager import create_jwt_token, verify_jwt_token
 from svc.models import (
-    BookingDetails,
+    ProvisioningStatusResponse,
+    SessionDetails,
     CreateSetupIntentResponse,
     EndSessionRequest,
     FinalizeBookingResponse,
@@ -90,7 +91,7 @@ def setup_intent_request(request: SetupIntentRequest) -> SetupIntentResponse:
             raise RuntimeError("Failed to create setup intent")
         jwt_token = create_jwt_token(
             {
-                "provisioning": {
+                TokenScope.PROVISIONING.name: {
                     "setup_intent_id": setup_intent.id,
                     "pod_id": request.pod_id,
                     "provisioning_id": str(uuid.uuid4()),
@@ -98,8 +99,9 @@ def setup_intent_request(request: SetupIntentRequest) -> SetupIntentResponse:
             },
             TokenScope.PROVISIONING,
         )
+        logger.info(f"Generated JWT token for setup intent {setup_intent.id}")
         return SetupIntentResponse(
-            client_secret=setup_intent.client_secret, jwt_token=jwt_token
+            client_secret=setup_intent.client_secret, provisioning_jwt_token=jwt_token
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -145,6 +147,7 @@ def finalize_booking_request(
         payload = verify_jwt_token(
             token, TokenScope.PROVISIONING
         )  # return the data INSIDE the token and scope
+        logging.info(f"Token verified, payload: {payload}")
         stripe = create_stripe_client()
         supabase = create_supabase_client()
         setup_intent_metadata = stripe.setup_intents.retrieve(
@@ -160,13 +163,18 @@ def finalize_booking_request(
             supabase, payload["setup_intent_id"]
         )
         if len(pre_existing_session) > 0:
-            provisioning = get_provisioning_by_session_id(
-                supabase, pre_existing_session["id"]
+            logger.info(
+                "Previous session found for setup intent, returning existing session ID"
             )
-            return FinalizeBookingResponse(
-                session_id=pre_existing_session["id"],
-                status=provisioning["status"],
+            session_jwt_token = create_jwt_token(
+                {
+                    TokenScope.SESSION.name: {
+                        "session_id": pre_existing_session["id"],
+                    },
+                },
+                TokenScope.SESSION,
             )
+            return FinalizeBookingResponse(session_jwt_token=session_jwt_token)
 
         # now in the new provisioning flow we first create the PodSession object and add it to the database
         customer_id: str = setup_intent_metadata["customer"]
@@ -203,11 +211,50 @@ def finalize_booking_request(
         # access code to prevent anyone else from booking it
         update_pod_status(supabase, session.pod_id, True)
 
+        logger.info(
+            f"Pod {session.pod_id} marked as in use, queuing access code provisioning job"
+        )
         # queue the background job to generate the access code and send the email
-        background_tasks.add_task(provision_access_code_job, session.id)
+        session_jwt_token = create_jwt_token(
+            {
+                TokenScope.SESSION.name: {
+                    "session_id": session.id,
+                },
+            },
+            TokenScope.SESSION,
+        )
 
-        return FinalizeBookingResponse(
-            session_id=session.id, status=provision.status.name
+        background_tasks.add_task(provision_access_code_job, session.id)
+        return FinalizeBookingResponse(session_jwt_token=session_jwt_token)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.get("/api/provisioning-status")
+def get_provisioning_status_request(
+    token: str = Depends(get_token),
+) -> ProvisioningStatusResponse:
+    try:
+        payload = verify_jwt_token(
+            token, TokenScope.SESSION
+        )  # return the data INSIDE the token and scope
+        logging.info(f"Token verified, payload: {payload}")
+        supabase = create_supabase_client()
+        provisioning = get_provisioning_by_session_id(supabase, payload["session_id"])
+        if not provisioning:
+            raise RuntimeError("Provisioning not found for session ID")
+
+        if ProvisionStatus(provisioning["status"]) != ProvisionStatus.READY:
+            return ProvisioningStatusResponse(
+                status=provisioning["status"], access_code=None
+            )
+
+        session = get_session(supabase, payload["session_id"])
+        if not session.get("access_code_id"):
+            raise RuntimeError("Access code ID not found for session")
+        access_code = int(get_access_code(session["access_code_id"]))
+        return ProvisioningStatusResponse(
+            status=provisioning["status"], access_code=access_code
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -261,8 +308,8 @@ def confirm_booking_request(request: ConfirmBookingRequest) -> DictWithStringKey
 
         access_code = get_access_code(access_code_id)
 
-        booking = BookingDetails(
-            booking_id=session.id,
+        booking = SessionDetails(
+            session_token=session.id,
             pod_name=pod["name"],
             address=pod["address"],
             start_time=start_time,
@@ -270,7 +317,7 @@ def confirm_booking_request(request: ConfirmBookingRequest) -> DictWithStringKey
         )
 
         logger.info(
-            f"Sending access email to {customer_email} for booking {booking.booking_id}"
+            f"Sending access email to {customer_email} for booking {booking.session_token}"
         )
 
         send_access_email(customer_email, booking)

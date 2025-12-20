@@ -3,7 +3,7 @@ import logging
 import resend
 
 from svc.env import resend_api_key
-from svc.models import BookingDetails
+from svc.models import SessionDetails
 from svc.utils import format_datetime_for_email
 
 HELLO_EMAIL = "shreyas@qwip.co.uk"
@@ -13,9 +13,9 @@ resend.api_key = resend_api_key
 logger = logging.getLogger(__name__)
 
 
-def _create_email_message(booking: BookingDetails) -> dict[str, str]:
-    formatted_start_time = format_datetime_for_email(booking.start_time.isoformat())
-    subject = f"Your Qwip Booking at {booking.pod_name} from {formatted_start_time}"
+def _create_email_message(session: SessionDetails) -> dict[str, str]:
+    formatted_start_time = format_datetime_for_email(session.start_time.isoformat())
+    subject = f"Your Qwip Session at {session.pod_name} from {formatted_start_time}"
 
     content = f"""
 <html>
@@ -24,16 +24,16 @@ def _create_email_message(booking: BookingDetails) -> dict[str, str]:
       <h2 style="color: #3D2A1A;">Thanks for booking with Qwip!</h2>
       <p>Your booking details are shown below:</p>
 
-      <p><strong>Start Time:</strong> {booking.start_time}</p>
-      <p><strong>Access Code:</strong> {booking.access_code}</p>
+      <p><strong>Start Time:</strong> {formatted_start_time}</p>
+      <p><strong>Access Code:</strong> {session.access_code}</p>
 
-      <p>To access your workspace, please go to <strong>{booking.address}</strong> and enter your access code on the booth keypad.</p>
+      <p>To access your workspace, please go to <strong>{session.address}</strong> and enter your access code on the booth keypad.</p>
 
       <p><strong>Important:</strong> After typing your code, press the <strong>Yale button</strong> to confirm and unlock the door.</p>
 
       <p>Once you're done, click the button below to end your booking:</p>
 
-      <a href="https://qwip.co.uk/end-session/{booking.booking_id}"
+      <a href="https://qwip.co.uk/end-session/{session.session_token}"
          style="display:inline-block; padding:12px 20px; margin-top:15px; background-color:#8C4F1D; color:#ffffff; text-decoration:none; border-radius:6px; font-weight:bold;">
         End Booking Now
       </a>
@@ -46,7 +46,7 @@ def _create_email_message(booking: BookingDetails) -> dict[str, str]:
         © 2025 Qwip Ltd. All rights reserved.<br />
         <a href="https://qwip.co.uk/privacy" style="color: #777; text-decoration: underline;">Privacy Policy</a> | 
         <a href="https://qwip.co.uk/contact" style="color: #777; text-decoration: underline;">Contact Us</a><br />
-        Qwip Ltd, 8 Cutter Lane, London, UK
+        Qwip Ltd, 128 City Road, London, EC1V 2NX
       </p>
     </div>
   </body>
@@ -56,7 +56,7 @@ def _create_email_message(booking: BookingDetails) -> dict[str, str]:
     return {"subject": subject, "content": content}
 
 
-def send_access_email(customer_email: str, booking: BookingDetails):
+def send_access_email(customer_email: str, booking: SessionDetails):
     message_metadata = _create_email_message(booking)
 
     r: resend.Email = resend.Emails.send(

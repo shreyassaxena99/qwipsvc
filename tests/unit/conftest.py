@@ -3,17 +3,17 @@ from unittest.mock import patch
 
 import pytest
 
-from svc.models import BookingDetails
+from svc.models import SessionDetails
 
 
 @pytest.fixture
 def sample_booking():
-    return BookingDetails(
+    return SessionDetails(
         pod_name="Test Pod",
         address="8 Cutter Lane, London, UK",
-        start_time=datetime(2025, 7, 7, 14, 0).isoformat(),
+        start_time=datetime(2025, 7, 7, 14, 0),
         access_code="561671",
-        booking_id="e6cf97",
+        session_token="e6cf97",
     )
 
 

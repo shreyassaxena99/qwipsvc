@@ -19,24 +19,26 @@ class GetPodResponse(BaseModel):
     in_use: bool
 
 class FinalizeBookingResponse(BaseModel):
-    session_id: str
-    status: str
+    session_jwt_token: str
 
 class SetupIntentRequest(BaseModel):
     pod_id: str
 
+class ProvisioningStatusResponse(BaseModel):
+    status: str
+    access_code: int | None = None
 
 class SetupIntentResponse(BaseModel):
     client_secret: str
-    jwt_token: str
+    provisioning_jwt_token: str
 
 
 class CreateSetupIntentResponse(BaseModel):
     client_secret: str
 
 
-class BookingDetails(BaseModel):
-    booking_id: str
+class SessionDetails(BaseModel):
+    session_token: str
     pod_name: str
     address: str
     start_time: datetime
