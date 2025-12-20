@@ -244,7 +244,12 @@ def get_provisioning_status_request(
         if not provisioning:
             raise RuntimeError("Provisioning not found for session ID")
 
-        if ProvisionStatus(provisioning["status"]) != ProvisionStatus.READY:
+        if ProvisionStatus(provisioning["status"]) == ProvisionStatus.READY:
+            return ProvisioningStatusResponse(
+                status=provisioning["status"], access_code=None
+            )
+
+        if ProvisionStatus(provisioning["status"]) == ProvisionStatus.FAILED:
             return ProvisioningStatusResponse(
                 status=provisioning["status"], access_code=None
             )
