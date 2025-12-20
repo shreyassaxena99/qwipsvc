@@ -3,7 +3,7 @@ from unittest.mock import ANY, MagicMock, patch
 from svc.payments_manager import (
     charge_user,
     create_stripe_event,
-    get_user_data,
+    create_setup_intent,
     process_event,
 )
 
@@ -17,7 +17,7 @@ def test_get_user_data_creates_setup_intent(mock_create_client):
     mock_client.setup_intents.create.return_value = mock_setup_intent
     mock_create_client.return_value = mock_client
 
-    result = get_user_data("abcdef")
+    result = create_setup_intent("abcdef")
     assert result == mock_setup_intent
     mock_client.setup_intents.create.assert_called_once_with(
         params={

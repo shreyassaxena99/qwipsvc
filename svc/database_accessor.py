@@ -5,9 +5,9 @@ from functools import cache
 from postgrest.exceptions import APIError
 from supabase import Client, create_client
 
-from svc.custom_types import DictWithStringKeys
+from svc.custom_types import DictWithStringKeys, ProvisionStatus
 from svc.env import supabase_key, supabase_url
-from svc.models import PodSession
+from svc.models import PodSession, SessionProvision
 
 
 class SupabaseError(RuntimeError):
@@ -20,6 +20,8 @@ logger = logging.getLogger(__name__)
 @cache
 def create_supabase_client() -> Client:
     logger.debug("Creating Supabase client")
+    if not supabase_url or not supabase_key:
+        raise SupabaseError("Supabase URL or key not set")
     return create_client(supabase_url, supabase_key)
 
 
@@ -45,6 +47,31 @@ def get_pod_by_id(client: Client, pod_id: str) -> DictWithStringKeys:
     except APIError as e:
         logger.error(f"Error creating {pod_id}: {e}")
         raise SupabaseError(f"Failed to find pod with {pod_id=}") from e
+
+
+def add_provisioning(client: Client, provisioning: SessionProvision) -> None:
+    logger.info(f"Adding provisioning for pod {provisioning.session_id}")
+    try:
+        result = (
+            client.table("session_provisionings")
+            .insert(
+                {
+                    "id": provisioning.provision_id,
+                    "session_id": provisioning.session_id,
+                    "status": provisioning.status.name,
+                    "created_at": datetime.now(timezone.utc),
+                }
+            )
+            .execute()
+        )
+        if not result.data:
+            raise SupabaseError("Failed to add provisioning to the database")
+    except APIError as e:
+        logger.error(f"Error adding provisioning: {e}")
+        raise SupabaseError("Failed to add provisioning to the database") from e
+    except Exception as e:
+        logger.error(f"Unexpected error adding provisioning: {e}")
+        raise
 
 
 def add_session(client: Client, session: PodSession) -> None:
@@ -117,6 +144,108 @@ def get_session(client: Client, session_id: str) -> DictWithStringKeys:
         logger.error(f"Error fetching session {session_id}: {e}")
         raise SupabaseError(f"Failed to find session with {session_id=}") from e
 
+
+def get_session_by_setup_intent_id(
+    client: Client, setup_intent_id: str
+) -> DictWithStringKeys:
+    try:
+        matching_sessions = (
+            client.table("pod_sessions")
+            .select("*")
+            .eq("stripe_setup_intent_id", setup_intent_id)
+            .execute()
+        )
+
+        if not matching_sessions.data:
+            return {}
+
+        return matching_sessions.data[0]
+    except APIError as e:
+        logger.error(f"Error fetching session for setup intent {setup_intent_id}: {e}")
+        raise SupabaseError(f"Failed to find session with {setup_intent_id=}") from e
+
+
+def get_provisioning_by_session_id(
+    client: Client, session_id: str
+) -> DictWithStringKeys:
+    try:
+        matching_provisioning = (
+            client.table("session_provisionings")
+            .select("*")
+            .eq("session_id", session_id)
+            .execute()
+        )
+
+        if not matching_provisioning.data:
+            raise SupabaseError(f"No matching provisioning found with {session_id=}")
+
+        return matching_provisioning.data[0]
+    except APIError as e:
+        logger.error(f"Error fetching provisioning for session {session_id}: {e}")
+        raise SupabaseError(f"Failed to find provisioning with {session_id=}") from e
+
+
+def set_provisioning_status_by_session_id(
+    client: Client, session_id: str, status: ProvisionStatus
+) -> None:
+    try:
+        client.table("session_provisionings").update({"status": status.name}).eq(
+            "session_id", session_id
+        ).execute()
+    except APIError as e:
+        logger.error(
+            f"Error updating provisioning status for session {session_id}: {e}"
+        )
+        raise SupabaseError(
+            f"Failed to update provisioning status with {session_id=}"
+        ) from e
+
+
+def increment_provisioning_attempts(
+    client: Client, session_id: str, status: ProvisionStatus
+) -> None:
+    try:
+        attempts = (
+            client.table("session_provisionings")
+            .select("attempts")
+            .eq("session_id", session_id)
+            .execute()
+        ).data[0]["attempts"]
+        now = datetime.now(timezone.utc)
+        updated_data = {
+            "attempts": int(attempts) + 1,
+            "updated_at": now,
+        }
+        if status == ProvisionStatus.FAILED:
+            updated_data["failed_at"] = now
+        elif status == ProvisionStatus.READY:
+            updated_data["ready_at"] = now
+        client.table("session_provisionings").update(updated_data).eq(
+            "session_id", session_id
+        ).execute()
+    except APIError as e:
+        logger.error(
+            f"Error incrementing provisioning attempts for session {session_id}: {e}"
+        )
+        raise SupabaseError(
+            f"Failed to increment provisioning attempts with {session_id=}"
+        ) from e
+
+
+def set_access_code_id_for_session(
+    client: Client, session_id: str, access_code_id: str
+) -> None:
+    try:
+        client.table("pod_sessions").update({"access_code_id": access_code_id}).eq(
+            "id", session_id
+        ).execute()
+    except APIError as e:
+        logger.error(f"Error updating access code ID for session {session_id}: {e}")
+        raise SupabaseError(
+            f"Failed to update access code ID with {session_id=}"
+        ) from e
+
+
 def get_access_code_id_for_setup_intent_id(client: Client, setup_intent_id: str) -> str:
     try:
         matching_sessions = (
@@ -127,13 +256,9 @@ def get_access_code_id_for_setup_intent_id(client: Client, setup_intent_id: str)
         )
 
         if not matching_sessions.data:
-            raise SupabaseError(
-                f"No matching sessions found with {setup_intent_id=}"
-            )
+            raise SupabaseError(f"No matching sessions found with {setup_intent_id=}")
 
         return matching_sessions.data[0]["access_code_id"]
     except APIError as e:
         logger.error(f"Error fetching session for setup intent {setup_intent_id}: {e}")
-        raise SupabaseError(
-            f"Failed to find session with {setup_intent_id=}"
-        ) from e
+        raise SupabaseError(f"Failed to find session with {setup_intent_id=}") from e

@@ -1,38 +1,50 @@
 from datetime import datetime, timezone
+from deprecated import deprecated
 import logging
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from svc.custom_types import DictWithStringKeys
+from svc.custom_types import DictWithStringKeys, ProvisionStatus, TokenScope
 from svc.database_accessor import (
+    add_provisioning,
     add_session,
     create_supabase_client,
     end_session,
     get_pod_by_id,
+    get_provisioning_by_session_id,
     get_session,
+    get_session_by_setup_intent_id,
     update_pod_status,
-    get_access_code_id_for_setup_intent_id,
 )
 from svc.email_manager import send_access_email
 from svc.env import log_level
+from svc.jwt_manager import create_jwt_token, verify_jwt_token
 from svc.models import (
     BookingDetails,
     CreateSetupIntentResponse,
     EndSessionRequest,
+    FinalizeBookingResponse,
     GetPodResponse,
     ConfirmBookingRequest,
     PodSession,
+    SessionProvision,
+    SetupIntentRequest,
+    SetupIntentResponse,
 )
 from svc.payments_manager import (
     charge_user,
     create_stripe_client,
     create_stripe_event,
-    get_user_data,
+    create_setup_intent,
     process_event,
 )
+from svc.provisioning_manager import provision_access_code_job
 from svc.utils import get_session_cost
 from svc.seam_accessor import delete_access_code, get_access_code, set_access_code
+
+import uuid
 
 app = FastAPI()
 
@@ -52,13 +64,43 @@ RESPONSE_STATUS_FAILED = "failed"
 logger = logging.getLogger(__name__)
 
 
+def get_token(creds: HTTPAuthorizationCredentials = Depends(HTTPBearer())) -> str:
+    return creds.credentials
+
+
+@deprecated(
+    reason="We are moving to a provisioning flow that uses JWTs to manage sessions"
+)
 @app.get("/api/create-setup-intent")
 def create_setup_intent_request(pod_id: str) -> CreateSetupIntentResponse:
     try:
-        setup_intent = get_user_data(pod_id)
+        setup_intent = create_setup_intent(pod_id)
         if not setup_intent.client_secret:
             raise RuntimeError("Failed to create setup intent")
         return CreateSetupIntentResponse(client_secret=setup_intent.client_secret)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/setup-intent")
+def setup_intent_request(request: SetupIntentRequest) -> SetupIntentResponse:
+    try:
+        setup_intent = create_setup_intent(request.pod_id)
+        if not setup_intent.client_secret:
+            raise RuntimeError("Failed to create setup intent")
+        jwt_token = create_jwt_token(
+            {
+                "provisioning": {
+                    "setup_intent_id": setup_intent.id,
+                    "pod_id": request.pod_id,
+                    "provisioning_id": str(uuid.uuid4()),
+                },
+            },
+            TokenScope.PROVISIONING,
+        )
+        return SetupIntentResponse(
+            client_secret=setup_intent.client_secret, jwt_token=jwt_token
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
@@ -84,7 +126,7 @@ async def stripe_webhook(request: Request) -> DictWithStringKeys:
         payload = await request.body()
         signature_header = request.headers.get("stripe-signature")
         try:
-            event = create_stripe_event(payload, signature_header)
+            event = create_stripe_event(payload, signature_header)  # type: ignore
         except Exception as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -95,6 +137,85 @@ async def stripe_webhook(request: Request) -> DictWithStringKeys:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
+@app.post("/api/booking/finalize")
+def finalize_booking_request(
+    background_tasks: BackgroundTasks, token: str = Depends(get_token)
+) -> FinalizeBookingResponse:
+    try:
+        payload = verify_jwt_token(
+            token, TokenScope.PROVISIONING
+        )  # return the data INSIDE the token and scope
+        stripe = create_stripe_client()
+        supabase = create_supabase_client()
+        setup_intent_metadata = stripe.setup_intents.retrieve(
+            payload["setup_intent_id"]
+        )
+
+        if setup_intent_metadata.status != "succeeded":
+            raise HTTPException(status_code=409, detail="Setup intent not succeeded")
+
+        # for retries (idempotency) - if the setup intent has already been used, return preprocessed session id and
+        # provisioning status
+        pre_existing_session = get_session_by_setup_intent_id(
+            supabase, payload["setup_intent_id"]
+        )
+        if len(pre_existing_session) > 0:
+            provisioning = get_provisioning_by_session_id(
+                supabase, pre_existing_session["id"]
+            )
+            return FinalizeBookingResponse(
+                session_id=pre_existing_session["id"],
+                status=provisioning["status"],
+            )
+
+        # now in the new provisioning flow we first create the PodSession object and add it to the database
+        customer_id: str = setup_intent_metadata["customer"]
+        payment_method: str = setup_intent_metadata["payment_method"]
+        payment_method_data = stripe.payment_methods.retrieve(payment_method)
+        customer_email = payment_method_data["billing_details"]["email"]
+
+        start_time = datetime.now(timezone.utc)
+
+        session = PodSession(
+            pod_id=payload["pod_id"],
+            user_email=customer_email,
+            start_time=start_time,
+            stripe_customer_id=customer_id,
+            stripe_payment_method=payment_method,
+            access_code_id=None,  # we will set this later
+            setup_intent_id=setup_intent_metadata["id"],
+        )
+
+        add_session(supabase, session)
+
+        if not session.id:
+            raise RuntimeError("Failed to add session to the database")
+
+        provision = SessionProvision(
+            provision_id=payload["provisioning_id"],
+            session_id=session.id,
+            status=ProvisionStatus.PENDING,
+        )
+
+        add_provisioning(supabase, provision)
+
+        # pod should now be blocked from bookings while we generate the
+        # access code to prevent anyone else from booking it
+        update_pod_status(supabase, session.pod_id, True)
+
+        # queue the background job to generate the access code and send the email
+        background_tasks.add_task(provision_access_code_job, session.id)
+
+        return FinalizeBookingResponse(
+            session_id=session.id, status=provision.status.name
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@deprecated(
+    "We are now following a provisioning flow that uses JWTs to manage sessions"
+)
 @app.post("/api/confirm-booking")
 def confirm_booking_request(request: ConfirmBookingRequest) -> DictWithStringKeys:
     try:

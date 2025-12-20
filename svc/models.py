@@ -1,6 +1,8 @@
 from datetime import datetime
 from pydantic import BaseModel
 
+from svc.custom_types import ProvisionStatus
+
 
 class EndSessionRequest(BaseModel):
     session_id: str
@@ -15,6 +17,18 @@ class GetPodResponse(BaseModel):
     address: str
     price_per_minute: float
     in_use: bool
+
+class FinalizeBookingResponse(BaseModel):
+    session_id: str
+    status: str
+
+class SetupIntentRequest(BaseModel):
+    pod_id: str
+
+
+class SetupIntentResponse(BaseModel):
+    client_secret: str
+    jwt_token: str
 
 
 class CreateSetupIntentResponse(BaseModel):
@@ -36,5 +50,10 @@ class PodSession(BaseModel):
     start_time: datetime
     stripe_customer_id: str
     stripe_payment_method: str
-    access_code_id: str
+    access_code_id: str | None = None
     setup_intent_id: str
+
+class SessionProvision(BaseModel):
+    provision_id: str
+    session_id: str
+    status: ProvisionStatus

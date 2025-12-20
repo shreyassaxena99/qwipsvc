@@ -24,10 +24,12 @@ logger = logging.getLogger(__name__)
 @cache
 def create_stripe_client() -> StripeClient:
     logger.debug("Creating Stripe client")
+    if not stripe_api_key:
+        raise ValueError("Stripe API key not set")
     return StripeClient(stripe_api_key)
 
 
-def get_user_data(pod_id: str) -> SetupIntent:
+def create_setup_intent(pod_id: str) -> SetupIntent:
     """We create a setup intent for the user which we will use to save their metadata
     and payment methods for future billing.
 

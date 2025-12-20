@@ -3,7 +3,7 @@ import os
 from seam import Seam
 import logging
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ def _get_seam_api_client() -> Seam:
 
 
 def _get_access_code() -> str:
-    return str(random.randint(100000, 999999))
+    return str(random.randint(1000, 9999))
 
 
 def _is_code_still_active(seam_client: Seam, access_code_id: str) -> bool:
