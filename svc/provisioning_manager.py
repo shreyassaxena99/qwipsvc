@@ -1,4 +1,4 @@
-from database_accessor import (
+from svc.database_accessor import (
     create_supabase_client,
     get_pod_by_id,
     get_session,
@@ -6,8 +6,8 @@ from database_accessor import (
     set_access_code_id_for_session,
     set_provisioning_status_by_session_id,
 )
-from custom_types import ProvisionStatus
-from seam_accessor import get_access_code, set_access_code
+from svc.custom_types import ProvisionStatus
+from svc.seam_accessor import get_access_code, set_access_code
 from svc.email_manager import send_access_email
 from svc.models import BookingDetails
 

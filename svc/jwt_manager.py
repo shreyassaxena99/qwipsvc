@@ -2,7 +2,7 @@ import jwt
 import os
 from datetime import datetime, timedelta, timezone
 
-from custom_types import DictWithStringKeys, TokenScope
+from svc.custom_types import DictWithStringKeys, TokenScope
 
 SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 DECRYPT_ALGORITHM = "HS256"
