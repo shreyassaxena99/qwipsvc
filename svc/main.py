@@ -91,7 +91,7 @@ def setup_intent_request(request: SetupIntentRequest) -> SetupIntentResponse:
             raise RuntimeError("Failed to create setup intent")
         jwt_token = create_jwt_token(
             {
-                TokenScope.PROVISIONING.name: {
+                TokenScope.PROVISIONING.value: {
                     "setup_intent_id": setup_intent.id,
                     "pod_id": request.pod_id,
                     "provisioning_id": str(uuid.uuid4()),
@@ -168,7 +168,7 @@ def finalize_booking_request(
             )
             session_jwt_token = create_jwt_token(
                 {
-                    TokenScope.SESSION.name: {
+                    TokenScope.SESSION.value: {
                         "session_id": pre_existing_session["id"],
                     },
                 },
@@ -217,7 +217,7 @@ def finalize_booking_request(
         # queue the background job to generate the access code and send the email
         session_jwt_token = create_jwt_token(
             {
-                TokenScope.SESSION.name: {
+                TokenScope.SESSION.value: {
                     "session_id": session.id,
                 },
             },

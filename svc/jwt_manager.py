@@ -38,11 +38,9 @@ def verify_jwt_token(
         payload = jwt.decode(token, secret_key, algorithms=[DECRYPT_ALGORITHM])
         logger.info(f"Decoded payload: {payload}")
         # sanity checks on the payload scope
-        if payload.get("scope") != scope:
-            raise jwt.InvalidTokenError("Invalid token scope")
-        if payload.get("scope") != scope.name:
+        if payload.get("scope") != scope.value:
             raise jwt.InvalidTokenError(
-                f"Invalid token scope - expected: {scope.name}, got: {payload.get('scope')}"
+                f"Invalid token scope - expected: {scope.value}, got: {payload.get('scope')}"
             )
 
         # check expiration time of JWT token based on scope
@@ -50,7 +48,7 @@ def verify_jwt_token(
             payload["exp"], tz=timezone.utc
         ):
             raise jwt.ExpiredSignatureError("Token has expired")
-        return payload[scope.name] # return the data INSIDE THE SCOPE NAME
+        return payload[scope.value] # return the data INSIDE THE SCOPE NAME
     except jwt.ExpiredSignatureError:
         raise ValueError("Token has expired")
     except jwt.InvalidTokenError:
