@@ -38,7 +38,7 @@ def verify_jwt_token(
         payload = jwt.decode(token, secret_key, algorithms=[DECRYPT_ALGORITHM])
         logger.info(f"Decoded payload: {payload}")
         # sanity checks on the payload scope
-        if payload.get("scope") != scope.value:
+        if scope.value not in payload:
             raise jwt.InvalidTokenError(
                 f"Invalid token scope - expected: {scope.value}, got: {payload.get('scope')}"
             )
