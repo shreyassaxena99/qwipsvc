@@ -63,3 +63,17 @@ class SessionProvision(BaseModel):
 class SessionProvisioningJobMetadata(BaseModel):
     jwt_token: str
     session_id: str
+
+class SessionData(BaseModel):
+    start_dt: str
+    end_dt: str | None
+    access_code: int 
+
+class PodData(BaseModel):
+    name: str
+    address: str
+    price_per_minute: float
+
+class SessionDataResponse(BaseModel):
+    session_data: SessionData
+    pod_data: PodData

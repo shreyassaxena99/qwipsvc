@@ -22,7 +22,10 @@ from svc.email_manager import send_access_email
 from svc.env import log_level
 from svc.jwt_manager import create_jwt_token, verify_jwt_token
 from svc.models import (
+    PodData,
     ProvisioningStatusResponse,
+    SessionData,
+    SessionDataResponse,
     SessionDetails,
     CreateSetupIntentResponse,
     EndSessionRequest,
@@ -267,6 +270,26 @@ def get_provisioning_status_request(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.get("/api/get-session-data")
+def get_session_data_request(token: str = Depends(get_token)) -> SessionDataResponse:
+    try:
+        payload = verify_jwt_token(token, TokenScope.SESSION)
+        supabase = create_supabase_client()
+        session_metadata = get_session(supabase, payload["session_id"])
+        pod = get_pod_by_id(supabase, session_metadata["pod_id"])
+        session_data = SessionData(
+            start_dt=session_metadata["start_time"],
+            end_dt=session_metadata.get("end_time"),
+            access_code=int(get_access_code(session_metadata["access_code_id"])),
+        )
+        pod_data = PodData(
+            name=pod["name"], address=pod["address"], price_per_minute=pod["price"]
+        )
+        return SessionDataResponse(session_data=session_data, pod_data=pod_data)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
 
 
 @deprecated(
