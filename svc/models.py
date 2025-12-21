@@ -71,6 +71,11 @@ class SessionProvisioningJobMetadata(BaseModel):
     session_id: str
 
 
+class SessionDeprovisioningJobMetadata(BaseModel):
+    access_code_id: str
+    pod_id: str
+
+
 class SessionData(BaseModel):
     start_dt: str
     end_dt: str | None
@@ -86,3 +91,11 @@ class PodData(BaseModel):
 class SessionDataResponse(BaseModel):
     session_data: SessionData
     pod_data: PodData
+
+
+class GetLockStatusResponse(BaseModel):
+    is_locked: bool
+
+
+class EndSessionResponse(BaseModel):
+    status: str

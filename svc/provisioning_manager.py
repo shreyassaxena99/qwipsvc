@@ -7,11 +7,16 @@ from svc.database_accessor import (
     set_access_code_id_for_session,
     set_provisioning_status_by_session_id,
     set_start_time_for_session,
+    update_pod_status,
 )
 from svc.custom_types import ProvisionStatus
-from svc.seam_accessor import get_access_code, set_access_code
+from svc.seam_accessor import delete_access_code, get_access_code, set_access_code
 from svc.email_manager import send_access_email
-from svc.models import SessionDetails, SessionProvisioningJobMetadata
+from svc.models import (
+    SessionDeprovisioningJobMetadata,
+    SessionDetails,
+    SessionProvisioningJobMetadata,
+)
 
 import logging
 
@@ -69,4 +74,22 @@ def provision_access_code_job(
             supabase, session_id, ProvisionStatus.FAILED
         )
         increment_provisioning_attempts(supabase, session_id, ProvisionStatus.FAILED)
+        raise e
+
+
+def deprovision_access_code_job(
+    session_deprovisioning_metadata: SessionDeprovisioningJobMetadata,
+) -> None:
+    try:
+        supabase = create_supabase_client()
+        access_code_id = session_deprovisioning_metadata.access_code_id
+        pod_id = session_deprovisioning_metadata.pod_id
+
+        logger.info(f"Deprovisioning access code {access_code_id} for pod {pod_id}")
+        delete_access_code(access_code_id)
+
+        logger.info("Access code deleted successfully, updating pod status")
+        update_pod_status(supabase, pod_id, False)
+    except Exception as e:
+        logger.error(f"Error deprovisioning access code for session: {e}")
         raise e

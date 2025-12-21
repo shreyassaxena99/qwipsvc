@@ -22,10 +22,13 @@ from svc.email_manager import send_access_email
 from svc.env import log_level
 from svc.jwt_manager import create_jwt_token, verify_jwt_token
 from svc.models import (
+    EndSessionResponse,
+    GetLockStatusResponse,
     PodData,
     ProvisioningStatusResponse,
     SessionData,
     SessionDataResponse,
+    SessionDeprovisioningJobMetadata,
     SessionDetails,
     CreateSetupIntentResponse,
     EndSessionRequest,
@@ -45,9 +48,17 @@ from svc.payments_manager import (
     create_setup_intent,
     process_event,
 )
-from svc.provisioning_manager import provision_access_code_job
+from svc.provisioning_manager import (
+    deprovision_access_code_job,
+    provision_access_code_job,
+)
 from svc.utils import get_session_cost
-from svc.seam_accessor import delete_access_code, get_access_code, set_access_code
+from svc.seam_accessor import (
+    delete_access_code,
+    get_access_code,
+    is_device_locked,
+    set_access_code,
+)
 
 import uuid
 
@@ -394,13 +405,31 @@ def get_session_status_request(session_id: str) -> DictWithStringKeys:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
-@app.post("/api/end-session")
-def end_session_request(request: EndSessionRequest) -> DictWithStringKeys:
+@app.get("/api/lock-status")
+def get_lock_status_request(device_id: str | None) -> GetLockStatusResponse:
     try:
+        status = False
+        if device_id:
+            status = is_device_locked(device_id)
+        else:
+            status = is_device_locked()
+        return GetLockStatusResponse(is_locked=status)
+    except Exception as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
+@app.post("/api/end-session")
+def end_session_request(
+    background_tasks: BackgroundTasks, token: str = Depends(get_token)
+) -> EndSessionResponse:
+    try:
+        payload = verify_jwt_token(token, TokenScope.SESSION)
+        session_id = payload["session_id"]
+        logger.info(f"Ending session for session ID: {session_id}")
         supabase = create_supabase_client()
 
-        session_metadata = get_session(supabase, request.session_id)
-        logger.info(f"Retrieved session metadata for {request.session_id}")
+        session_metadata = get_session(supabase, session_id)
+        logger.info(f"Retrieved session metadata for {session_id}")
 
         pod = get_pod_by_id(supabase, session_metadata["pod_id"])
         logger.info(f"Retrieved pod metadata for {session_metadata['pod_id']}")
@@ -412,15 +441,18 @@ def end_session_request(request: EndSessionRequest) -> DictWithStringKeys:
         charge_user(session_metadata, session_cost_pence)
 
         logger.info("Charging user successful, ending session on database-side")
-        end_session(supabase, request.session_id)
+        end_session(supabase, session_id)
 
         logger.info(
-            "Session ended on database-side successfully, now deleting access code"
+            "Session ended on database-side successfully, now kicking off background task to delete access code"
         )
-        delete_access_code(session_metadata["access_code_id"])
 
-        logger.info("Access code deleted successfully, updating pod status")
-        update_pod_status(supabase, session_metadata["pod_id"], False)
-        return {"status": RESPONSE_STATUS_SUCCESS}
+        background_job_metadata = SessionDeprovisioningJobMetadata(
+            access_code_id=session_metadata["access_code_id"],
+            pod_id=session_metadata["pod_id"],
+        )
+        background_tasks.add_task(deprovision_access_code_job, background_job_metadata)
+
+        return EndSessionResponse(status=RESPONSE_STATUS_SUCCESS)
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

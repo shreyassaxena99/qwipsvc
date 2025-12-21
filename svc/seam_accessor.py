@@ -26,6 +26,23 @@ def _is_code_still_active(seam_client: Seam, access_code_id: str) -> bool:
         return False
 
 
+def is_device_locked(
+    device_id: str = DEFAULT_DEVICE_ID, seam_client: Seam = _get_seam_api_client()
+) -> bool:
+    """
+    Checks if the specified device is locked.
+
+    Args:
+        device_id (str): The ID of the device to check. Defaults to DEFAULT_DEVICE_ID.
+        seam_client (Seam): The Seam API client. Defaults to a new client created with the SEAM_API_KEY environment variable.
+
+    Returns:
+        bool: True if the device is locked, False otherwise.
+    """
+    device = seam_client.devices.get(device_id=device_id)
+    return device.properties["locked"]
+
+
 def get_access_code(
     access_code_id: str, seam_client: Seam = _get_seam_api_client()
 ) -> str:
