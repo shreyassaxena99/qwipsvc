@@ -282,7 +282,11 @@ def get_session_data_request(token: str = Depends(get_token)) -> SessionDataResp
         session_data = SessionData(
             start_dt=session_metadata["start_time"],
             end_dt=session_metadata.get("end_time"),
-            access_code=int(get_access_code(session_metadata["access_code_id"])),
+            access_code=(
+                None
+                if session_metadata.get("end_time")
+                else int(get_access_code(session_metadata["access_code_id"]))
+            ),
         )
         pod_data = PodData(
             name=pod["name"], address=pod["address"], price_per_minute=pod["price"]
