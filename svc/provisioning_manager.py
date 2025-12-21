@@ -6,8 +6,7 @@ from svc.database_accessor import (
     set_access_code_id_for_session,
     set_provisioning_status_by_session_id,
 )
-from svc.custom_types import ProvisionStatus, TokenScope
-from svc.jwt_manager import verify_jwt_token
+from svc.custom_types import ProvisionStatus
 from svc.seam_accessor import get_access_code, set_access_code
 from svc.email_manager import send_access_email
 from svc.models import SessionDetails, SessionProvisioningJobMetadata
@@ -20,20 +19,20 @@ logger = logging.getLogger(__name__)
 def provision_access_code_job(
     session_provisioning_metadata: SessionProvisioningJobMetadata,
 ) -> None:
-    supabase = create_supabase_client()
-    jwt_token = session_provisioning_metadata.jwt_token
-    session_id = session_provisioning_metadata.session_id
-    session = get_session(supabase, session_id)
-
-    # idempotency check
-    if session.get("access_code_id"):
-        set_provisioning_status_by_session_id(
-            supabase, session_id, ProvisionStatus.READY
-        )
-        return
-
-    # provisioning logic
     try:
+        supabase = create_supabase_client()
+        jwt_token = session_provisioning_metadata.jwt_token
+        session_id = session_provisioning_metadata.session_id
+        session = get_session(supabase, session_id)
+
+        # idempotency check
+        if session.get("access_code_id"):
+            set_provisioning_status_by_session_id(
+                supabase, session_id, ProvisionStatus.READY
+            )
+            return
+
+        # provisioning logic
         logger.info(f"Provisioning access code for session {session_id}")
         access_code_id = set_access_code(session["start_time"], session["device_id"])
         logger.info(
