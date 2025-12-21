@@ -1,3 +1,4 @@
+from datetime import datetime
 from svc.database_accessor import (
     create_supabase_client,
     get_pod_by_id,
@@ -34,7 +35,7 @@ def provision_access_code_job(
 
         # provisioning logic
         logger.info(f"Provisioning access code for session {session_id}")
-        access_code_id = set_access_code(session["start_time"])
+        access_code_id = set_access_code(datetime.fromisoformat(session["start_time"]))
         logger.info(
             f"Access code {access_code_id} provisioned for session {session_id}"
         )
