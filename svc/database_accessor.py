@@ -214,7 +214,7 @@ def increment_provisioning_attempts(
         now = datetime.now(timezone.utc)
         updated_data = {
             "attempts": int(attempts) + 1,
-            "updated_at": now,
+            "updated_at": now.isoformat(),
         }
         if status == ProvisionStatus.FAILED:
             updated_data["failed_at"] = now

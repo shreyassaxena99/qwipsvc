@@ -34,7 +34,7 @@ def provision_access_code_job(
 
         # provisioning logic
         logger.info(f"Provisioning access code for session {session_id}")
-        access_code_id = set_access_code(session["start_time"], session["device_id"])
+        access_code_id = set_access_code(session["start_time"])
         logger.info(
             f"Access code {access_code_id} provisioned for session {session_id}"
         )
