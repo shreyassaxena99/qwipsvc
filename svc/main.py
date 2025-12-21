@@ -31,6 +31,7 @@ from svc.models import (
     ConfirmBookingRequest,
     PodSession,
     SessionProvision,
+    SessionProvisioningJobMetadata,
     SetupIntentRequest,
     SetupIntentResponse,
 )
@@ -224,7 +225,11 @@ def finalize_booking_request(
             TokenScope.SESSION,
         )
 
-        background_tasks.add_task(provision_access_code_job, session.id)
+        session_metadata = SessionProvisioningJobMetadata(
+            jwt_token=session_jwt_token, session_id=session.id
+        )
+
+        background_tasks.add_task(provision_access_code_job, session_metadata)
         return FinalizeBookingResponse(session_jwt_token=session_jwt_token)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e

@@ -59,3 +59,7 @@ class SessionProvision(BaseModel):
     provision_id: str
     session_id: str
     status: ProvisionStatus
+
+class SessionProvisioningJobMetadata(BaseModel):
+    jwt_token: str
+    session_id: str
