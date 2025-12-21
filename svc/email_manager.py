@@ -21,7 +21,7 @@ def _create_email_message(session: SessionDetails) -> dict[str, str]:
 <html>
   <body style="font-family: Arial, sans-serif; background-color: #FAFAF8; padding: 20px; margin: 0;">
     <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 30px; border-radius: 8px;">
-      <h2 style="color: #3D2A1A;">Thanks for booking with Qwip!</h2>
+      <h2 style="color: #1f3d32;">Thanks for booking with Qwip!</h2>
       <p>Your session details are shown below:</p>
 
       <p><strong>Start Time:</strong> {formatted_start_time}</p>
