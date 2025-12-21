@@ -58,8 +58,8 @@ def add_provisioning(client: Client, provisioning: SessionProvision) -> None:
                 {
                     "id": provisioning.provision_id,
                     "session_id": provisioning.session_id,
-                    "status": provisioning.status.name,
-                    "created_at": datetime.now(timezone.utc),
+                    "status": provisioning.status.value,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
                 }
             )
             .execute()
@@ -189,7 +189,7 @@ def set_provisioning_status_by_session_id(
     client: Client, session_id: str, status: ProvisionStatus
 ) -> None:
     try:
-        client.table("session_provisionings").update({"status": status.name}).eq(
+        client.table("session_provisionings").update({"status": status.value}).eq(
             "session_id", session_id
         ).execute()
     except APIError as e:
