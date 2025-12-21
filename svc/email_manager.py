@@ -22,20 +22,20 @@ def _create_email_message(session: SessionDetails) -> dict[str, str]:
   <body style="font-family: Arial, sans-serif; background-color: #FAFAF8; padding: 20px; margin: 0;">
     <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 30px; border-radius: 8px;">
       <h2 style="color: #3D2A1A;">Thanks for booking with Qwip!</h2>
-      <p>Your booking details are shown below:</p>
+      <p>Your session details are shown below:</p>
 
       <p><strong>Start Time:</strong> {formatted_start_time}</p>
       <p><strong>Access Code:</strong> {session.access_code}</p>
 
-      <p>To access your workspace, please go to <strong>{session.address}</strong> and enter your access code on the booth keypad.</p>
+      <p>To access your workspace, please go to <strong>{session.address}</strong> and enter your access code on the pod's keypad.</p>
 
       <p><strong>Important:</strong> After typing your code, press the <strong>Yale button</strong> to confirm and unlock the door.</p>
 
-      <p>Once you're done, click the button below to end your booking:</p>
+      <p>Click the button below to see how much your session is costing and end your session:</p>
 
-      <a href="https://qwip.co.uk/end-session/{session.session_token}"
-         style="display:inline-block; padding:12px 20px; margin-top:15px; background-color:#8C4F1D; color:#ffffff; text-decoration:none; border-radius:6px; font-weight:bold;">
-        End Booking Now
+      <a href="https://qwip.co.uk/session?t={session.session_token}"
+         style="display:inline-block; padding:12px 20px; margin-top:15px; background-color:#1f3d32; color:#ffffff; text-decoration:none; border-radius:6px; font-weight:bold;">
+        Manage Your Session
       </a>
 
       <p style="margin-top: 30px;">Thank you for using Qwip!</p>
