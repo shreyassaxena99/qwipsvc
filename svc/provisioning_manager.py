@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from svc.database_accessor import (
     create_supabase_client,
     get_pod_by_id,
@@ -6,6 +6,7 @@ from svc.database_accessor import (
     increment_provisioning_attempts,
     set_access_code_id_for_session,
     set_provisioning_status_by_session_id,
+    set_start_time_for_session,
 )
 from svc.custom_types import ProvisionStatus
 from svc.seam_accessor import get_access_code, set_access_code
@@ -49,11 +50,13 @@ def provision_access_code_job(
         pod = get_pod_by_id(supabase, session["pod_id"])
         access_code = get_access_code(access_code_id)
 
+        set_start_time_for_session(supabase, session_id, datetime.now(timezone.utc))
+
         booking = SessionDetails(
             session_token=jwt_token,
             pod_name=pod["name"],
             address=pod["address"],
-            start_time=session["start_time"],
+            start_time=datetime.now(timezone.utc),
             access_code=access_code,
         )
 

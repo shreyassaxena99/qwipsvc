@@ -246,6 +246,18 @@ def set_access_code_id_for_session(
         ) from e
 
 
+def set_start_time_for_session(
+    client: Client, session_id: str, start_time: datetime
+) -> None:
+    try:
+        client.table("pod_sessions").update({"start_time": start_time.isoformat()}).eq(
+            "id", session_id
+        ).execute()
+    except APIError as e:
+        logger.error(f"Error updating start time for session {session_id}: {e}")
+        raise SupabaseError(f"Failed to update start time with {session_id=}") from e
+
+
 def get_access_code_id_for_setup_intent_id(client: Client, setup_intent_id: str) -> str:
     try:
         matching_sessions = (
