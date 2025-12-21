@@ -244,16 +244,15 @@ def get_provisioning_status_request(
         if not provisioning:
             raise RuntimeError("Provisioning not found for session ID")
 
-        if ProvisionStatus(provisioning["status"]) == ProvisionStatus.READY:
+        if ProvisionStatus(provisioning["status"]) in {
+            ProvisionStatus.PENDING,
+            ProvisionStatus.FAILED,
+        }:
             return ProvisioningStatusResponse(
                 status=provisioning["status"], access_code=None
             )
 
-        if ProvisionStatus(provisioning["status"]) == ProvisionStatus.FAILED:
-            return ProvisioningStatusResponse(
-                status=provisioning["status"], access_code=None
-            )
-
+        # only here if the provision status is READY
         session = get_session(supabase, payload["session_id"])
         if not session.get("access_code_id"):
             raise RuntimeError("Access code ID not found for session")
