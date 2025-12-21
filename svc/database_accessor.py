@@ -217,9 +217,9 @@ def increment_provisioning_attempts(
             "updated_at": now.isoformat(),
         }
         if status == ProvisionStatus.FAILED:
-            updated_data["failed_at"] = now
+            updated_data["failed_at"] = now.isoformat()
         elif status == ProvisionStatus.READY:
-            updated_data["ready_at"] = now
+            updated_data["ready_at"] = now.isoformat()
         client.table("session_provisionings").update(updated_data).eq(
             "session_id", session_id
         ).execute()
