@@ -6,7 +6,7 @@ from svc.env import resend_api_key
 from svc.models import SessionDetails
 from svc.utils import format_datetime_for_email
 
-HELLO_EMAIL = "shreyas@qwip.co.uk"
+HELLO_EMAIL = "hello@qwip.co.uk"
 
 resend.api_key = resend_api_key
 
@@ -29,7 +29,7 @@ def _create_email_message(session: SessionDetails) -> dict[str, str]:
 
       <p>To access your workspace, please go to <strong>{session.address}</strong> and enter your access code on the pod's keypad.</p>
 
-      <p><strong>Important:</strong> After typing your code, press the <strong>Yale button</strong> to confirm and unlock the door.</p>
+      <p>To enter the code, please enter the 5 digit code provided on the handle of the door.<p>
 
       <p>Click the button below to see how much your session is costing and end your session:</p>
 
