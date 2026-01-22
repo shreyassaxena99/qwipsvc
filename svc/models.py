@@ -69,6 +69,7 @@ class SessionProvision(BaseModel):
 class SessionProvisioningJobMetadata(BaseModel):
     jwt_token: str
     session_id: str
+    use_static_codes: bool = False
 
 
 class SessionDeprovisioningJobMetadata(BaseModel):

@@ -20,6 +20,8 @@ from svc.models import (
 
 import logging
 
+from svc.static_code_manager import StaticCodeManager
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,6 +32,7 @@ def provision_access_code_job(
         supabase = create_supabase_client()
         jwt_token = session_provisioning_metadata.jwt_token
         session_id = session_provisioning_metadata.session_id
+        use_static_codes = session_provisioning_metadata.use_static_codes
         session = get_session(supabase, session_id)
 
         # idempotency check
@@ -41,7 +44,11 @@ def provision_access_code_job(
 
         # provisioning logic
         logger.info(f"Provisioning access code for session {session_id}")
-        access_code_id = set_access_code(datetime.fromisoformat(session["start_time"]))
+        access_code_id = (
+            StaticCodeManager().random_encrypted_access_code_id()
+            if use_static_codes
+            else set_access_code(datetime.fromisoformat(session["start_time"]))
+        )
         logger.info(
             f"Access code {access_code_id} provisioned for session {session_id}"
         )

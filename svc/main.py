@@ -241,11 +241,12 @@ def finalize_booking_request(
         )
 
         session_metadata = SessionProvisioningJobMetadata(
-            jwt_token=session_jwt_token, session_id=session.id
+            jwt_token=session_jwt_token,
+            session_id=session.id,
+            use_static_codes=use_static_codes,
         )
 
-        if not use_static_codes:
-            background_tasks.add_task(provision_access_code_job, session_metadata)
+        background_tasks.add_task(provision_access_code_job, session_metadata)
         return FinalizeBookingResponse(session_jwt_token=session_jwt_token)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
