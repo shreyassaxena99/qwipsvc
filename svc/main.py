@@ -19,7 +19,7 @@ from svc.database_accessor import (
     update_pod_status,
 )
 from svc.email_manager import send_access_email
-from svc.env import log_level
+from svc.env import log_level, use_static_codes
 from svc.jwt_manager import create_jwt_token, verify_jwt_token
 from svc.models import (
     EndSessionResponse,
@@ -52,6 +52,7 @@ from svc.provisioning_manager import (
     deprovision_access_code_job,
     provision_access_code_job,
 )
+from svc.static_code_manager import StaticCodeManager
 from svc.utils import get_session_cost
 from svc.seam_accessor import (
     delete_access_code,
@@ -243,7 +244,8 @@ def finalize_booking_request(
             jwt_token=session_jwt_token, session_id=session.id
         )
 
-        background_tasks.add_task(provision_access_code_job, session_metadata)
+        if not use_static_codes:
+            background_tasks.add_task(provision_access_code_job, session_metadata)
         return FinalizeBookingResponse(session_jwt_token=session_jwt_token)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
@@ -296,7 +298,11 @@ def get_session_data_request(token: str = Depends(get_token)) -> SessionDataResp
             access_code=(
                 None
                 if session_metadata.get("end_time")
-                else int(get_access_code(session_metadata["access_code_id"]))
+                else int(
+                    StaticCodeManager().decrypt_code(session_metadata["access_code_id"])
+                    if use_static_codes
+                    else get_access_code(session_metadata["access_code_id"])
+                )
             ),
         )
         pod_data = PodData(
@@ -328,7 +334,11 @@ def confirm_booking_request(request: ConfirmBookingRequest) -> DictWithStringKey
         logger.info(f"Creating session for pod {pod_id} with customer {customer_email}")
 
         start_time = datetime.now(timezone.utc)
-        access_code_id = set_access_code(start_time)
+        access_code_id = (
+            StaticCodeManager().random_encrypted_access_code_id()
+            if use_static_codes
+            else set_access_code(start_time)
+        )
 
         session = PodSession(
             pod_id=pod["id"],
@@ -353,7 +363,11 @@ def confirm_booking_request(request: ConfirmBookingRequest) -> DictWithStringKey
 
         logger.info(f"Updated pod status for {session.pod_id} to in use")
 
-        access_code = get_access_code(access_code_id)
+        access_code = (
+            StaticCodeManager().decrypt_code(access_code_id)
+            if use_static_codes
+            else get_access_code(access_code_id)
+        )
 
         booking = SessionDetails(
             session_token=session.id,
@@ -409,6 +423,9 @@ def get_session_status_request(session_id: str) -> DictWithStringKeys:
 def get_lock_status_request(device_id: str | None) -> GetLockStatusResponse:
     try:
         status = False
+        if use_static_codes:
+            # for supporting static door codes for MVP
+            return GetLockStatusResponse(is_locked=True)
         if device_id:
             status = is_device_locked(device_id)
         else:
@@ -446,12 +463,14 @@ def end_session_request(
         logger.info(
             "Session ended on database-side successfully, now kicking off background task to delete access code"
         )
-
-        background_job_metadata = SessionDeprovisioningJobMetadata(
-            access_code_id=session_metadata["access_code_id"],
-            pod_id=session_metadata["pod_id"],
-        )
-        background_tasks.add_task(deprovision_access_code_job, background_job_metadata)
+        if not use_static_codes:
+            background_job_metadata = SessionDeprovisioningJobMetadata(
+                access_code_id=session_metadata["access_code_id"],
+                pod_id=session_metadata["pod_id"],
+            )
+            background_tasks.add_task(
+                deprovision_access_code_job, background_job_metadata
+            )
 
         return EndSessionResponse(status=RESPONSE_STATUS_SUCCESS)
     except Exception as e:

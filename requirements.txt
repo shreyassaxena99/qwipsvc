@@ -5,9 +5,11 @@ attrs==25.3.0
 black==25.1.0
 cachetools==5.5.2
 certifi==2025.6.15
+cffi==2.0.0
 charset-normalizer==3.4.2
 click==8.2.1
 coverage==7.9.2
+cryptography==46.0.3
 dataclasses-json==0.6.7
 Deprecated==1.2.18
 deprecation==2.1.0
@@ -48,6 +50,7 @@ proto-plus==1.26.1
 protobuf==6.31.1
 pyasn1==0.6.1
 pyasn1_modules==0.4.2
+pycparser==3.0
 pydantic==2.11.7
 pydantic_core==2.33.2
 Pygments==2.19.2
