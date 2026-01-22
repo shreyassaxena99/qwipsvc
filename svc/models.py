@@ -75,6 +75,7 @@ class SessionProvisioningJobMetadata(BaseModel):
 class SessionDeprovisioningJobMetadata(BaseModel):
     access_code_id: str
     pod_id: str
+    use_static_codes: bool = False
 
 
 class SessionData(BaseModel):

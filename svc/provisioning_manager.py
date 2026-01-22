@@ -95,9 +95,13 @@ def deprovision_access_code_job(
         supabase = create_supabase_client()
         access_code_id = session_deprovisioning_metadata.access_code_id
         pod_id = session_deprovisioning_metadata.pod_id
+        use_static_codes = session_deprovisioning_metadata.use_static_codes
 
-        logger.info(f"Deprovisioning access code {access_code_id} for pod {pod_id}")
-        delete_access_code(access_code_id)
+        if not use_static_codes:
+            logger.info(f"Deprovisioning access code {access_code_id} for pod {pod_id}")
+            delete_access_code(access_code_id)
+        else:
+            logger.info(f"Static code used, no deprovisioning needed for pod {pod_id}")
 
         logger.info("Access code deleted successfully, updating pod status")
         update_pod_status(supabase, pod_id, False)

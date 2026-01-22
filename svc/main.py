@@ -278,7 +278,13 @@ def get_provisioning_status_request(
         session = get_session(supabase, payload["session_id"])
         if not session.get("access_code_id"):
             raise RuntimeError("Access code ID not found for session")
-        access_code = int(get_access_code(session["access_code_id"]))
+        access_code = int(
+            (
+                StaticCodeManager().decrypt_code(session["access_code_id"])
+                if use_static_codes
+                else get_access_code(session["access_code_id"])
+            )
+        )
         return ProvisioningStatusResponse(
             status=provisioning["status"], access_code=access_code
         )
@@ -464,14 +470,13 @@ def end_session_request(
         logger.info(
             "Session ended on database-side successfully, now kicking off background task to delete access code"
         )
-        if not use_static_codes:
-            background_job_metadata = SessionDeprovisioningJobMetadata(
-                access_code_id=session_metadata["access_code_id"],
-                pod_id=session_metadata["pod_id"],
-            )
-            background_tasks.add_task(
-                deprovision_access_code_job, background_job_metadata
-            )
+
+        background_job_metadata = SessionDeprovisioningJobMetadata(
+            access_code_id=session_metadata["access_code_id"],
+            pod_id=session_metadata["pod_id"],
+            use_static_codes=use_static_codes,
+        )
+        background_tasks.add_task(deprovision_access_code_job, background_job_metadata)
 
         return EndSessionResponse(status=RESPONSE_STATUS_SUCCESS)
     except Exception as e:
