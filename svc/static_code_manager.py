@@ -1,7 +1,7 @@
 import base64
 import os
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from env import static_code_b64_key
+from svc.env import static_code_b64_key
 import random
 
 
