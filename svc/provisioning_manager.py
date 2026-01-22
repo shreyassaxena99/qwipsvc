@@ -60,7 +60,11 @@ def provision_access_code_job(
 
         # send access email
         pod = get_pod_by_id(supabase, session["pod_id"])
-        access_code = get_access_code(access_code_id)
+        access_code = (
+            StaticCodeManager().decrypt_code(access_code_id)
+            if use_static_codes
+            else get_access_code(access_code_id)
+        )
 
         set_start_time_for_session(supabase, session_id, datetime.now(timezone.utc))
 
