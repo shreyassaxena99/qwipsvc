@@ -18,6 +18,8 @@ from svc.seam_accessor import set_access_code, get_access_code
 
 SETUP_INTENT_SUCCEDED_EVENT = "setup_intent.succeeded"
 
+DEFAULT_RECEIPT_EMAIL = "hello@qwip.co.uk"
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,6 +72,23 @@ def process_event(event: Event) -> None:
     logger.info(f"Unhandled event type: {event.type}")
 
 
+def get_customer_email(payment_method: str) -> str:
+    """Get the customer email from a payment method ID.
+
+    Args:
+        payment_method (str): Stripe Payment Method ID
+    Returns:
+        str | None: Customer Email if it exists else default email
+    """
+    stripe = create_stripe_client()
+    payment_method_data = stripe.payment_methods.retrieve(payment_method)
+    customer_email = payment_method_data["billing_details"]["email"]
+    if not customer_email:
+        logger.warning(f"No email found for setup intent {payment_method}")
+        return DEFAULT_RECEIPT_EMAIL
+    return customer_email
+
+
 def charge_user(session: DictWithStringKeys, cost_in_pence: int) -> None:
     """Charge the user for the amount that they have booked the pod for by creating a payment
     intent and confirming it at the same time.
@@ -95,6 +114,6 @@ def charge_user(session: DictWithStringKeys, cost_in_pence: int) -> None:
             "currency": "gbp",
             "confirm": True,
             "off_session": True,
-            "receipt_email": "saxonshreyas@gmail.com"
+            "receipt_email": get_customer_email(session["stripe_payment_method"]),
         }
     )
