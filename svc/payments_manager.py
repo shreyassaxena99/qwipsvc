@@ -95,5 +95,6 @@ def charge_user(session: DictWithStringKeys, cost_in_pence: int) -> None:
             "currency": "gbp",
             "confirm": True,
             "off_session": True,
+            "receipt_email": "saxonshreyas@gmail.com"
         }
     )
