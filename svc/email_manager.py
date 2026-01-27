@@ -15,14 +15,14 @@ resend.api_key = resend_api_key
 logger = logging.getLogger(__name__)
 
 
-def _create_logo_attachment() -> resend.Attachment:
-    f: bytes = open("svc/assets/logo.jpg", "rb").read()
-    attachment: resend.Attachment = {
-        "content": list(f),
-        "filename": "logo.jpg",
-        "content_id": "logo-image",
-    }
-    return attachment
+# def _create_logo_attachment() -> resend.Attachment:
+#     f: bytes = open("svc/assets/logo.jpg", "rb").read()
+#     attachment: resend.Attachment = {
+#         "content": list(f),
+#         "filename": "logo.jpg",
+#         "content_id": "logo-image",
+#     }
+#     return attachment
 
 
 def _create_booking_email_message(session: SessionDetails) -> dict[str, str]:
@@ -35,11 +35,6 @@ def _create_booking_email_message(session: SessionDetails) -> dict[str, str]:
     <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 0; border-radius: 8px; overflow: hidden;">
       
       <!-- Banner -->
-      <img
-        src=\"cid:logo-image\"/
-        alt="qwip"
-        style="display:block; width:100%; max-width:600px; height:auto; border:0; margin:0; padding:0;"
-      />
 
       <!-- Content -->
       <div style="padding: 30px;">
@@ -90,11 +85,6 @@ def _create_invalid_payment_email_message(
     <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 0; border-radius: 8px; overflow: hidden;">
       
       <!-- Banner -->
-      <img
-        src=\"cid:logo-image\"/
-        alt="qwip"
-        style="display:block; width:100%; max-width:600px; height:auto; border:0; margin:0; padding:0;"
-      />
 
       <!-- Content -->
       <div style="padding: 30px;">
@@ -125,15 +115,13 @@ def _create_invalid_payment_email_message(
 
 def send_access_email(customer_email: str, booking: SessionDetails):
     message_metadata = _create_booking_email_message(booking)
-    attachment = _create_logo_attachment()
 
     r: resend.Emails.SendResponse = resend.Emails.send(
         {
             "from": HELLO_EMAIL,
             "to": customer_email,
             "subject": message_metadata["subject"],
-            "html": message_metadata["content"],
-            "attachments": [attachment],
+            "html": message_metadata["content"]
         }
     )
 
@@ -145,15 +133,13 @@ def send_invalid_payment_email(session_details: DictWithStringKeys, cost_in_penc
     message_metadata = _create_invalid_payment_email_message(
         session_details, cost_in_pence
     )
-    attachment = _create_logo_attachment()
 
     r: resend.Emails.SendResponse = resend.Emails.send(
         {
             "from": HELLO_EMAIL,
             "to": FOUNDER_EMAILS,
             "subject": message_metadata["subject"],
-            "html": message_metadata["content"],
-            "attachments": [attachment],
+            "html": message_metadata["content"]
         }
     )
 
