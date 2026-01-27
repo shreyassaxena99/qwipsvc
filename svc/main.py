@@ -20,7 +20,7 @@ from svc.database_accessor import (
     update_pod_status,
 )
 from svc.email_manager import send_access_email, send_invalid_payment_email
-from svc.env import log_level, use_static_codes
+from svc.env import log_level, use_static_codes, promo_mode
 from svc.jwt_manager import create_jwt_token, verify_jwt_token
 from svc.models import (
     EndSessionResponse,
@@ -459,7 +459,9 @@ def end_session_request(
         pod = get_pod_by_id(supabase, session_metadata["pod_id"])
         logger.info(f"Retrieved pod metadata for {session_metadata['pod_id']}")
 
-        session_cost_pence = round(get_session_cost(pod, session_metadata) * 100)
+        session_cost_pence = round(
+            get_session_cost(pod, session_metadata, promo_mode) * 100
+        )
         logger.info(f"Calculated session cost: {session_cost_pence} pence")
 
         logger.info("Attempting to charge user")

@@ -12,3 +12,4 @@ resend_api_key = os.getenv("RESEND_API_KEY")
 use_static_codes = os.getenv("USE_STATIC_CODES", "false").lower() == "true"
 static_code_b64_key = os.getenv("STATIC_CODE_B64_KEY")
 log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+promo_mode = os.getenv("PROMO_MODE", "false").lower() == "true"

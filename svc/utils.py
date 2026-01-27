@@ -3,18 +3,20 @@ from datetime import datetime, timezone
 from svc.custom_types import DictWithStringKeys
 
 
-def get_session_cost(pod: DictWithStringKeys, session: DictWithStringKeys) -> float:
+def get_session_cost(
+    pod: DictWithStringKeys, session: DictWithStringKeys, promo_mode: bool = False
+) -> float:
     session_start_time = session["start_time"]
     if not session.get("end_time"):
         session_end_time = datetime.now(timezone.utc)
-    else:    
+    else:
         session_end_time = datetime.fromisoformat(session["end_time"])
     session_minutes: float = (
-        (
-            session_end_time - datetime.fromisoformat(session_start_time)
-        ).total_seconds()
+        (session_end_time - datetime.fromisoformat(session_start_time)).total_seconds()
     ) / 60
-    billable_minutes = max(0.0, session_minutes - 10.0)  # first 10 minutes free
+    billable_minutes = (
+        promo_mode and max(0.0, session_minutes - 10.0) or session_minutes
+    )  # first 10 minutes free if in promo_mode
     return billable_minutes * float(pod["price"])
 
 
