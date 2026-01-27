@@ -276,14 +276,20 @@ def get_access_code_id_for_setup_intent_id(client: Client, setup_intent_id: str)
         raise SupabaseError(f"Failed to find session with {setup_intent_id=}") from e
 
 
-def add_session_to_invalid_payment_attempts(client: Client, session_id: str, amount: int) -> None:
+def add_session_to_invalid_payment_attempts(
+    client: Client, session_id: str, amount: int
+) -> None:
     try:
         client.table("invalid_payment_attempts").insert(
             {
                 "session_id": session_id,
-                "amount": amount,
+                "session_cost": amount,
             }
         ).execute()
     except APIError as e:
-        logger.error(f"Error adding session {session_id} to invalid payment attempts: {e}")
-        raise SupabaseError(f"Failed to add session to invalid payment attempts with {session_id=}") from e
+        logger.error(
+            f"Error adding session {session_id} to invalid payment attempts: {e}"
+        )
+        raise SupabaseError(
+            f"Failed to add session to invalid payment attempts with {session_id=}"
+        ) from e
