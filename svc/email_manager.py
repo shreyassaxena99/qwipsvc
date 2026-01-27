@@ -2,52 +2,75 @@ import logging
 
 import resend
 
+from svc.custom_types import DictWithStringKeys
 from svc.env import resend_api_key
 from svc.models import SessionDetails
 from svc.utils import format_datetime_for_email
 
 HELLO_EMAIL = "hello@qwip.co.uk"
+FOUNDER_EMAILS = ["shreyas@qwip.co.uk", "zain@qwip.co.uk", "stiofan@qwip.co.uk"]
 
 resend.api_key = resend_api_key
 
 logger = logging.getLogger(__name__)
 
 
-def _create_email_message(session: SessionDetails) -> dict[str, str]:
+def _create_logo_attachment() -> resend.Attachment:
+    f: bytes = open("svc/assets/logo.jpg", "rb").read()
+    attachment: resend.Attachment = {
+        "content": list(f),
+        "filename": "logo.jpg",
+        "content_id": "logo-image",
+    }
+    return attachment
+
+
+def _create_booking_email_message(session: SessionDetails) -> dict[str, str]:
     formatted_start_time = format_datetime_for_email(session.start_time.isoformat())
     subject = f"Your Qwip Session at {session.pod_name} from {formatted_start_time}"
 
     content = f"""
 <html>
   <body style="font-family: Arial, sans-serif; background-color: #FAFAF8; padding: 20px; margin: 0;">
-    <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 30px; border-radius: 8px;">
-      <h2 style="color: #1f3d32;">Thanks for booking with Qwip!</h2>
-      <p>Your session details are shown below:</p>
+    <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 0; border-radius: 8px; overflow: hidden;">
+      
+      <!-- Banner -->
+      <img
+        src=\"cid:logo-image\"/
+        alt="qwip"
+        style="display:block; width:100%; max-width:600px; height:auto; border:0; margin:0; padding:0;"
+      />
 
-      <p><strong>Start Time:</strong> {formatted_start_time}</p>
-      <p><strong>Access Code:</strong> {session.access_code}</p>
+      <!-- Content -->
+      <div style="padding: 30px;">
+        <h2 style="color: #1f3d32; margin-top: 0;">Thanks for booking with qwip!</h2>
+        <p>Your session details are shown below:</p>
 
-      <p>To access your workspace, please go to <strong>{session.address}</strong> and enter your access code on the pod's keypad.</p>
+        <p><strong>Start Time:</strong> {formatted_start_time}</p>
+        <p><strong>Access Code:</strong> {session.access_code}</p>
 
-      <p>To enter the code, please enter the 5 digit code provided on the handle of the door.<p>
+        <p>To access your workspace, please go to <strong>{session.address}</strong> and enter your access code on the pod's keypad.</p>
 
-      <p>Click the button below to see how much your session is costing and end your session:</p>
+        <p>To enter the code, please enter the 5 digit code provided on the handle of the door.</p>
 
-      <a href="https://qwip.co.uk/session?t={session.session_token}"
-         style="display:inline-block; padding:12px 20px; margin-top:15px; background-color:#1f3d32; color:#ffffff; text-decoration:none; border-radius:6px; font-weight:bold;">
-        Manage Your Session
-      </a>
+        <p>Click the button below to see how much your session is costing and end your session:</p>
 
-      <p style="margin-top: 30px;">Thank you for using Qwip!</p>
+        <a href="https://qwip.co.uk/session?t={session.session_token}"
+           style="display:inline-block; padding:12px 20px; margin-top:15px; background-color:#1f3d32; color:#ffffff; text-decoration:none; border-radius:6px; font-weight:bold;">
+          Manage Your Session
+        </a>
 
-      <hr style="border: none; border-top: 1px solid #eee; margin: 40px 0;" />
+        <p style="margin-top: 30px;">Thank you for using qwip!</p>
 
-      <p style="font-size: 12px; color: #777;">
-        © 2025 Qwip Ltd. All rights reserved.<br />
-        <a href="https://qwip.co.uk/privacy" style="color: #777; text-decoration: underline;">Privacy Policy</a> | 
-        <a href="https://qwip.co.uk/contact" style="color: #777; text-decoration: underline;">Contact Us</a><br />
-        Qwip Ltd, 128 City Road, London, EC1V 2NX
-      </p>
+        <hr style="border: none; border-top: 1px solid #eee; margin: 40px 0;" />
+
+        <p style="font-size: 12px; color: #777; margin: 0;">
+          © 2025 Qwip Ltd. All rights reserved.<br />
+          <a href="https://qwip.co.uk/privacy" style="color: #777; text-decoration: underline;">Privacy Policy</a> |
+          <a href="https://qwip.co.uk/contact" style="color: #777; text-decoration: underline;">Contact Us</a><br />
+          Qwip Ltd, 128 City Road, London, EC1V 2NX
+        </p>
+      </div>
     </div>
   </body>
 </html>
@@ -56,17 +79,83 @@ def _create_email_message(session: SessionDetails) -> dict[str, str]:
     return {"subject": subject, "content": content}
 
 
-def send_access_email(customer_email: str, booking: SessionDetails):
-    message_metadata = _create_email_message(booking)
+def _create_invalid_payment_email_message(
+    session_details: DictWithStringKeys, cost_in_pence: int
+) -> DictWithStringKeys:
+    subject = "Issue with a Qwip session payment"
 
-    r: resend.Email = resend.Emails.send(
+    content = f"""
+<html>
+  <body style="font-family: Arial, sans-serif; background-color: #FAFAF8; padding: 20px; margin: 0;">
+    <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 0; border-radius: 8px; overflow: hidden;">
+      
+      <!-- Banner -->
+      <img
+        src=\"cid:logo-image\"/
+        alt="qwip"
+        style="display:block; width:100%; max-width:600px; height:auto; border:0; margin:0; padding:0;"
+      />
+
+      <!-- Content -->
+      <div style="padding: 30px;">
+        
+        There was an issue processing payment for the following session:<br/><br/>
+
+        <strong>Session ID:</strong> {session_details["id"]}<br/>
+        <strong>Customer Email:</strong> {session_details["user_email"]}<br/>
+        <strong>Start Time:</strong> {format_datetime_for_email(session_details["start_time"])}<br/>
+        <strong>End Time:</strong> {format_datetime_for_email(session_details["end_time"])}<br/>
+        <strong>Cost (in pence):</strong> {cost_in_pence}<br/><br/>
+      
+        <hr style="border: none; border-top: 1px solid #eee; margin: 40px 0;" />
+
+        <p style="font-size: 12px; color: #777; margin: 0;">
+          © 2025 Qwip Ltd. All rights reserved.<br />
+          <a href="https://qwip.co.uk/privacy" style="color: #777; text-decoration: underline;">Privacy Policy</a> |
+          <a href="https://qwip.co.uk/contact" style="color: #777; text-decoration: underline;">Contact Us</a><br />
+          Qwip Ltd, 128 City Road, London, EC1V 2NX
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
+"""
+    return {"subject": subject, "content": content}
+
+
+def send_access_email(customer_email: str, booking: SessionDetails):
+    message_metadata = _create_booking_email_message(booking)
+    attachment = _create_logo_attachment()
+
+    r: resend.Emails.SendResponse = resend.Emails.send(
         {
             "from": HELLO_EMAIL,
             "to": customer_email,
             "subject": message_metadata["subject"],
             "html": message_metadata["content"],
+            "attachments": [attachment],
         }
     )
 
     if r["id"]:
         logger.info(f"Email sent successfully to {customer_email} with ID: {r["id"]}")
+
+
+def send_invalid_payment_email(session_details: DictWithStringKeys, cost_in_pence: int):
+    message_metadata = _create_invalid_payment_email_message(
+        session_details, cost_in_pence
+    )
+    attachment = _create_logo_attachment()
+
+    r: resend.Emails.SendResponse = resend.Emails.send(
+        {
+            "from": HELLO_EMAIL,
+            "to": FOUNDER_EMAILS,
+            "subject": message_metadata["subject"],
+            "html": message_metadata["content"],
+            "attachments": [attachment],
+        }
+    )
+
+    if r["id"]:
+        logger.info(f"Invalid payment email sent successfully with ID: {r['id']}")

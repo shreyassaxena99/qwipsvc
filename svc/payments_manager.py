@@ -89,7 +89,7 @@ def get_customer_email(payment_method: str) -> str:
     return customer_email
 
 
-def charge_user(session: DictWithStringKeys, cost_in_pence: int) -> None:
+def charge_user(session: DictWithStringKeys, cost_in_pence: int) -> int:
     """Charge the user for the amount that they have booked the pod for by creating a payment
     intent and confirming it at the same time.
 
@@ -101,19 +101,26 @@ def charge_user(session: DictWithStringKeys, cost_in_pence: int) -> None:
         logger.error(
             "Cost must be at least 30 pence to cover Stripe fees, not charging the user"
         )
-        return
+        return 0
 
     logger.info(
         f"Charging user for session {session['id']} with cost {cost_in_pence} pence"
     )
-    create_stripe_client().payment_intents.create(
-        params={
-            "customer": session["stripe_customer_id"],
-            "payment_method": session["stripe_payment_method"],
-            "amount": cost_in_pence,
-            "currency": "gbp",
-            "confirm": True,
-            "off_session": True,
-            "receipt_email": get_customer_email(session["stripe_payment_method"]),
-        }
-    )
+    try:
+        create_stripe_client().payment_intents.create(
+            params={
+                "customer": session["stripe_customer_id"],
+                "payment_method": session["stripe_payment_method"],
+                "amount": cost_in_pence,
+                "currency": "gbp",
+                "confirm": True,
+                "off_session": True,
+                "receipt_email": get_customer_email(session["stripe_payment_method"]),
+            }
+        )
+        return 0
+    except Exception as e:
+        logger.error(
+            f"Error charging user for session {session['id']}: {e}"
+        )
+        return -1

@@ -66,7 +66,7 @@ qh3==1.5.3
 realtime==2.5.3
 requests==2.32.4
 requests-oauthlib==2.0.0
-resend==2.11.0
+resend==2.21.0
 rsa==4.9.1
 ruff==0.12.2
 seam==1.110.0

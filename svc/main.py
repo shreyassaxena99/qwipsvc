@@ -10,6 +10,7 @@ from svc.custom_types import DictWithStringKeys, ProvisionStatus, TokenScope
 from svc.database_accessor import (
     add_provisioning,
     add_session,
+    add_session_to_invalid_payment_attempts,
     create_supabase_client,
     end_session,
     get_pod_by_id,
@@ -18,7 +19,7 @@ from svc.database_accessor import (
     get_session_by_setup_intent_id,
     update_pod_status,
 )
-from svc.email_manager import send_access_email
+from svc.email_manager import send_access_email, send_invalid_payment_email
 from svc.env import log_level, use_static_codes
 from svc.jwt_manager import create_jwt_token, verify_jwt_token
 from svc.models import (
@@ -462,9 +463,24 @@ def end_session_request(
         logger.info(f"Calculated session cost: {session_cost_pence} pence")
 
         logger.info("Attempting to charge user")
-        charge_user(session_metadata, session_cost_pence)
+        return_code: int = charge_user(session_metadata, session_cost_pence)
 
-        logger.info("Charging user successful, ending session on database-side")
+        if return_code != 0:
+            logger.error(
+                "Charging user failed, moving session to invalid_payment_attempts"
+            )
+            add_session_to_invalid_payment_attempts(
+                supabase, session_id, session_cost_pence
+            )
+            logger.info(
+                "Session moved to invalid_payment_attempts successfully, notifying management"
+            )
+            send_invalid_payment_email(session_metadata, session_cost_pence)
+        else:
+            logger.info("Charging user successful/didn't charge user")
+
+        logger.info("Ending session on database-side")
+
         end_session(supabase, session_id)
 
         logger.info(

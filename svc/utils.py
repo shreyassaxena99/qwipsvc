@@ -14,7 +14,8 @@ def get_session_cost(pod: DictWithStringKeys, session: DictWithStringKeys) -> fl
             session_end_time - datetime.fromisoformat(session_start_time)
         ).total_seconds()
     ) / 60
-    return session_minutes * float(pod["price"])
+    billable_minutes = max(0.0, session_minutes - 10.0)  # first 10 minutes free
+    return billable_minutes * float(pod["price"])
 
 
 def _ordinal(n: int) -> str:
