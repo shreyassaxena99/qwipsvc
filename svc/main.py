@@ -475,15 +475,18 @@ def end_session_request(
                 supabase, session_id, session_cost_pence
             )
             logger.info(
-                "Session moved to invalid_payment_attempts successfully, notifying management"
+                "Session moved to invalid_payment_attempts successfully, will notify management shortly"
             )
-            send_invalid_payment_email(session_metadata, session_cost_pence)
         else:
             logger.info("Charging user successful/didn't charge user")
 
         logger.info("Ending session on database-side")
 
         end_session(supabase, session_id)
+
+        if return_code != 0:
+            logger.info("Sending invalid payment email to management")
+            send_invalid_payment_email(session_metadata, session_cost_pence)
 
         logger.info(
             "Session ended on database-side successfully, now kicking off background task to delete access code"

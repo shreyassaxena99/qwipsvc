@@ -134,6 +134,8 @@ def send_invalid_payment_email(session_details: DictWithStringKeys, cost_in_penc
         session_details, cost_in_pence
     )
 
+    logger.info(f"Sending invalid payment email to management for session_details={session_details}")
+
     r: resend.Emails.SendResponse = resend.Emails.send(
         {
             "from": HELLO_EMAIL,
