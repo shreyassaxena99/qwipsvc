@@ -60,9 +60,9 @@ def _create_booking_email_message(session: SessionDetails) -> dict[str, str]:
         <hr style="border: none; border-top: 1px solid #eee; margin: 40px 0;" />
 
         <p style="font-size: 12px; color: #777; margin: 0;">
-          © 2025 Qwip Ltd. All rights reserved.<br />
-          <a href="https://qwip.co.uk/privacy" style="color: #777; text-decoration: underline;">Privacy Policy</a> |
-          <a href="https://qwip.co.uk/contact" style="color: #777; text-decoration: underline;">Contact Us</a><br />
+          © 2025 qwip Ltd. All rights reserved.<br />
+          <a href="https://qwip.co.uk/privacy-policy" style="color: #777; text-decoration: underline;">Privacy Policy</a> |
+          <a href="https://qwip.co.uk/support" style="color: #777; text-decoration: underline;">Contact Us</a><br />
           Qwip Ltd, 128 City Road, London, EC1V 2NX
         </p>
       </div>
@@ -99,8 +99,8 @@ def _create_invalid_payment_email_message(
 
         <p style="font-size: 12px; color: #777; margin: 0;">
           © 2025 Qwip Ltd. All rights reserved.<br />
-          <a href="https://qwip.co.uk/privacy" style="color: #777; text-decoration: underline;">Privacy Policy</a> |
-          <a href="https://qwip.co.uk/contact" style="color: #777; text-decoration: underline;">Contact Us</a><br />
+          <a href="https://qwip.co.uk/privacy-policy" style="color: #777; text-decoration: underline;">Privacy Policy</a> |
+          <a href="https://qwip.co.uk/support" style="color: #777; text-decoration: underline;">Contact Us</a><br />
           Qwip Ltd, 128 City Road, London, EC1V 2NX
         </p>
       </div>
