@@ -93,8 +93,6 @@ def _create_invalid_payment_email_message(
 
         <strong>Session ID:</strong> {session_details["id"]}<br/>
         <strong>Customer Email:</strong> {session_details["user_email"]}<br/>
-        <strong>Start Time:</strong> {format_datetime_for_email(session_details["start_time"])}<br/>
-        <strong>End Time:</strong> {format_datetime_for_email(session_details["end_time"])}<br/>
         <strong>Cost (in pence):</strong> {cost_in_pence}<br/><br/>
       
         <hr style="border: none; border-top: 1px solid #eee; margin: 40px 0;" />
@@ -121,7 +119,7 @@ def send_access_email(customer_email: str, booking: SessionDetails):
             "from": HELLO_EMAIL,
             "to": customer_email,
             "subject": message_metadata["subject"],
-            "html": message_metadata["content"]
+            "html": message_metadata["content"],
         }
     )
 
@@ -134,14 +132,16 @@ def send_invalid_payment_email(session_details: DictWithStringKeys, cost_in_penc
         session_details, cost_in_pence
     )
 
-    logger.info(f"Sending invalid payment email to management for session_details={session_details}")
+    logger.info(
+        f"Sending invalid payment email to management for session_details={session_details}"
+    )
 
     r: resend.Emails.SendResponse = resend.Emails.send(
         {
             "from": HELLO_EMAIL,
             "to": FOUNDER_EMAILS,
             "subject": message_metadata["subject"],
-            "html": message_metadata["content"]
+            "html": message_metadata["content"],
         }
     )
 
