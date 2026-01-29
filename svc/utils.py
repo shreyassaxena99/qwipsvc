@@ -18,7 +18,7 @@ def get_session_cost(
         (session_end_time - datetime.fromisoformat(session_start_time)).total_seconds()
     ) / 60
     billable_minutes = 0.0
-    if (promo_mode):
+    if promo_mode:
         billable_minutes = session_minutes - 10.0
     else:
         billable_minutes = session_minutes
