@@ -17,7 +17,7 @@ class StaticCodeManager:
                 "STATIC_CODE_B64_KEY environment variable must be set to use StaticCodeManager"
             )
         self.key = base64.urlsafe_b64decode(b64_key)
-        self.static_codes = [14231, 33421, 21443, 41132, 14243, 34211]
+        self.static_codes = [14231, 33421, 21443, 14243, 34211, 12344]
 
     def _encrypt_code(self, code: int) -> str:
         """
