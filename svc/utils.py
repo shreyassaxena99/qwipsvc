@@ -5,6 +5,7 @@ from svc.custom_types import DictWithStringKeys
 
 logger = logging.getLogger(__name__)
 
+
 def get_session_cost(
     pod: DictWithStringKeys, session: DictWithStringKeys, promo_mode: bool = False
 ) -> float:
@@ -19,7 +20,9 @@ def get_session_cost(
     billable_minutes = (
         promo_mode and max(0.0, session_minutes - 10.0) or session_minutes
     )  # first 10 minutes free if in promo_mode
-    logger.info(f"promo_mode = {promo_mode} Session duration in minutes: {session_minutes}")
+    logger.info(
+        f"promo_mode = {promo_mode} BILLABLE duration in minutes: {billable_minutes}"
+    )
     return billable_minutes * float(pod["price"])
 
 
