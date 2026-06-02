@@ -1,20 +1,10 @@
 import logging
-from datetime import datetime, timezone
 from functools import cache
 
 from stripe import Event, SetupIntent, StripeClient, Webhook
 
 from svc.custom_types import DictWithStringKeys
-from svc.database_accessor import (
-    add_session,
-    create_supabase_client,
-    get_pod_by_id,
-    update_pod_status,
-)
-from svc.email_manager import send_access_email
 from svc.env import stripe_api_key, stripe_webhook_secret
-from svc.models import SessionDetails, PodSession
-from svc.seam_accessor import set_access_code, get_access_code
 
 SETUP_INTENT_SUCCEDED_EVENT = "setup_intent.succeeded"
 

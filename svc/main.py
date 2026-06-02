@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
-from deprecated import deprecated
 import logging
+import uuid
+from deprecated import deprecated
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +21,7 @@ from svc.database_accessor import (
     update_pod_status,
 )
 from svc.email_manager import send_access_email, send_invalid_payment_email
-from svc.env import log_level, use_static_codes, promo_mode
+from svc.env import log_level, use_static_codes
 from svc.jwt_manager import create_jwt_token, verify_jwt_token
 from svc.models import (
     EndSessionResponse,
@@ -32,7 +33,6 @@ from svc.models import (
     SessionDeprovisioningJobMetadata,
     SessionDetails,
     CreateSetupIntentResponse,
-    EndSessionRequest,
     FinalizeBookingResponse,
     GetPodResponse,
     ConfirmBookingRequest,
@@ -56,13 +56,10 @@ from svc.provisioning_manager import (
 from svc.static_code_manager import StaticCodeManager
 from svc.utils import get_session_cost
 from svc.seam_accessor import (
-    delete_access_code,
     get_access_code,
     is_device_locked,
     set_access_code,
 )
-
-import uuid
 
 app = FastAPI()
 
@@ -459,9 +456,7 @@ def end_session_request(
         pod = get_pod_by_id(supabase, session_metadata["pod_id"])
         logger.info(f"Retrieved pod metadata for {session_metadata['pod_id']}")
 
-        session_cost_pence = round(
-            get_session_cost(pod, session_metadata, promo_mode) * 100
-        )
+        session_cost_pence = round(get_session_cost(pod, session_metadata) * 100)
         logger.info(f"Calculated session cost: {session_cost_pence} pence")
 
         logger.info("Attempting to charge user")

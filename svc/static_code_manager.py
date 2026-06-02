@@ -1,8 +1,10 @@
 import base64
 import os
+from pathlib import Path
+import random
+
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from svc.env import static_code_b64_key
-import random
 
 
 class StaticCodeManager:
@@ -17,7 +19,12 @@ class StaticCodeManager:
                 "STATIC_CODE_B64_KEY environment variable must be set to use StaticCodeManager"
             )
         self.key = base64.urlsafe_b64decode(b64_key)
-        self.static_codes = [14231, 33421, 21443, 14243, 34211, 12344]
+        codes_file = Path(__file__).parent / "random_static_codes.txt"
+        self.static_codes = [
+            int(line.strip())
+            for line in codes_file.read_text().splitlines()
+            if line.strip()
+        ]
 
     def _encrypt_code(self, code: int) -> str:
         """

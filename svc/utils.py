@@ -6,25 +6,16 @@ from svc.custom_types import DictWithStringKeys
 logger = logging.getLogger(__name__)
 
 
-def get_session_cost(
-    pod: DictWithStringKeys, session: DictWithStringKeys, promo_mode: bool = False
-) -> float:
+def get_session_cost(pod: DictWithStringKeys, session: DictWithStringKeys) -> float:
     session_start_time = session["start_time"]
     if not session.get("end_time"):
         session_end_time = datetime.now(timezone.utc)
     else:
         session_end_time = datetime.fromisoformat(session["end_time"])
-    session_minutes: float = (
+    billable_minutes: float = (
         (session_end_time - datetime.fromisoformat(session_start_time)).total_seconds()
     ) / 60
-    billable_minutes = 0.0
-    if promo_mode:
-        billable_minutes = session_minutes - 10.0
-    else:
-        billable_minutes = session_minutes
-    logger.info(
-        f"promo_mode = {promo_mode} BILLABLE duration in minutes: {billable_minutes}"
-    )
+    logger.info(f"BILLABLE duration in minutes: {billable_minutes}")
     return billable_minutes * float(pod["price"])
 
 
