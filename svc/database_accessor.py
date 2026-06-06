@@ -276,6 +276,18 @@ def get_access_code_id_for_setup_intent_id(client: Client, setup_intent_id: str)
         raise SupabaseError(f"Failed to find session with {setup_intent_id=}") from e
 
 
+def update_session_checkout_photo(
+    client: Client, session_id: str, photo_url: str
+) -> None:
+    try:
+        client.table("pod_sessions").update({"checkout_photo_url": photo_url}).eq(
+            "id", session_id
+        ).execute()
+    except APIError as e:
+        logger.error(f"Error updating checkout photo for session {session_id}: {e}")
+        raise SupabaseError(f"Failed to update checkout photo for {session_id=}") from e
+
+
 def add_session_to_invalid_payment_attempts(
     client: Client, session_id: str, amount: int
 ) -> None:

@@ -3,7 +3,15 @@ import logging
 import uuid
 from deprecated import deprecated
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
+from fastapi import (
+    BackgroundTasks,
+    Depends,
+    FastAPI,
+    File,
+    HTTPException,
+    Request,
+    UploadFile,
+)
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
@@ -19,6 +27,7 @@ from svc.database_accessor import (
     get_session,
     get_session_by_setup_intent_id,
     update_pod_status,
+    update_session_checkout_photo,
 )
 from svc.email_manager import send_access_email, send_invalid_payment_email
 from svc.env import log_level, use_static_codes
@@ -41,6 +50,7 @@ from svc.models import (
     SessionProvisioningJobMetadata,
     SetupIntentRequest,
     SetupIntentResponse,
+    UploadCheckoutPhotoResponse,
 )
 from svc.payments_manager import (
     charge_user,
@@ -54,6 +64,7 @@ from svc.provisioning_manager import (
     provision_access_code_job,
 )
 from svc.static_code_manager import StaticCodeManager
+from svc.storage_accessor import upload_checkout_photo
 from svc.utils import get_session_cost
 from svc.seam_accessor import (
     get_access_code,
@@ -440,6 +451,45 @@ def get_lock_status_request(device_id: str | None) -> GetLockStatusResponse:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
+_ALLOWED_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
+_MAX_PHOTO_BYTES = 10 * 1024 * 1024  # 10 MB
+
+
+@app.post("/api/session/upload-checkout-photo")
+async def upload_checkout_photo_request(
+    photo: UploadFile = File(...),
+    token: str = Depends(get_token),
+) -> UploadCheckoutPhotoResponse:
+    try:
+        payload = verify_jwt_token(token, TokenScope.SESSION)
+        session_id = payload["session_id"]
+
+        if photo.content_type not in _ALLOWED_PHOTO_TYPES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid file type '{photo.content_type}'. Allowed: jpeg, png, webp.",
+            )
+
+        file_bytes = await photo.read()
+        if len(file_bytes) > _MAX_PHOTO_BYTES:
+            raise HTTPException(
+                status_code=400, detail="File too large. Maximum size is 10 MB."
+            )
+
+        supabase = create_supabase_client()
+        photo_url = upload_checkout_photo(
+            supabase, session_id, file_bytes, photo.content_type
+        )
+        update_session_checkout_photo(supabase, session_id, photo_url)
+
+        logger.info(f"Checkout photo uploaded for session {session_id}: {photo_url}")
+        return UploadCheckoutPhotoResponse(photo_url=photo_url)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
 @app.post("/api/end-session")
 def end_session_request(
     background_tasks: BackgroundTasks, token: str = Depends(get_token)
@@ -452,6 +502,11 @@ def end_session_request(
 
         session_metadata = get_session(supabase, session_id)
         logger.info(f"Retrieved session metadata for {session_id}")
+
+        if not session_metadata.get("checkout_photo_url"):
+            raise HTTPException(
+                status_code=400, detail="Checkout photo required before ending session"
+            )
 
         pod = get_pod_by_id(supabase, session_metadata["pod_id"])
         logger.info(f"Retrieved pod metadata for {session_metadata['pod_id']}")
@@ -495,5 +550,7 @@ def end_session_request(
         background_tasks.add_task(deprovision_access_code_job, background_job_metadata)
 
         return EndSessionResponse(status=RESPONSE_STATUS_SUCCESS)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

@@ -1,11 +1,6 @@
 from unittest.mock import ANY, MagicMock, patch
 
-from svc.payments_manager import (
-    charge_user,
-    create_stripe_event,
-    create_setup_intent,
-    process_event,
-)
+from svc.payments_manager import charge_user, create_stripe_event, create_setup_intent
 
 
 @patch("svc.payments_manager.create_stripe_client")
@@ -45,6 +40,9 @@ def test_create_stripe_event_constructs_event(mock_construct_event):
 def test_charge_user_creates_payment_intent(mock_create_client):
     mock_client = MagicMock()
     mock_create_client.return_value = mock_client
+    mock_client.payment_methods.retrieve.return_value = {
+        "billing_details": {"email": "user@test.com"}
+    }
 
     session_data = {
         "id": "session_123",
@@ -62,5 +60,6 @@ def test_charge_user_creates_payment_intent(mock_create_client):
             "currency": "gbp",
             "confirm": True,
             "off_session": True,
+            "receipt_email": "user@test.com",
         }
     )

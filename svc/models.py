@@ -101,3 +101,7 @@ class GetLockStatusResponse(BaseModel):
 
 class EndSessionResponse(BaseModel):
     status: str
+
+
+class UploadCheckoutPhotoResponse(BaseModel):
+    photo_url: str
