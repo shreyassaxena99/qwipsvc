@@ -27,49 +27,59 @@ logger = logging.getLogger(__name__)
 
 def _create_booking_email_message(session: SessionDetails) -> dict[str, str]:
     formatted_start_time = format_datetime_for_email(session.start_time.isoformat())
-    subject = f"Your Qwip Session at {session.pod_name} from {formatted_start_time}"
+    subject = f"Your qwip session at {session.pod_name} from {formatted_start_time}"
+    spaced_code = " ".join(str(session.access_code))
 
-    content = f"""
+    content = f"""<!DOCTYPE html>
 <html>
-  <body style="font-family: Arial, sans-serif; background-color: #FAFAF8; padding: 20px; margin: 0;">
-    <div style="max-width: 600px; margin: auto; background-color: #ffffff; padding: 0; border-radius: 8px; overflow: hidden;">
-      
-      <!-- Banner -->
-
-      <!-- Content -->
-      <div style="padding: 30px;">
-        <h2 style="color: #1f3d32; margin-top: 0;">Thanks for booking with qwip!</h2>
-        <p>Your session details are shown below:</p>
-
-        <p><strong>Start Time:</strong> {formatted_start_time}</p>
-        <p><strong>Access Code:</strong> {session.access_code}</p>
-
-        <p>To access your workspace, please go to <strong>{session.address}</strong> and enter your access code on the pod's keypad.</p>
-
-        <p>To enter the code, please enter the 5 digit code provided on the handle of the door.</p>
-
-        <p>Click the button below to see how much your session is costing and end your session:</p>
-
-        <a href="https://qwip.co.uk/session?t={session.session_token}"
-           style="display:inline-block; padding:12px 20px; margin-top:15px; background-color:#1f3d32; color:#ffffff; text-decoration:none; border-radius:6px; font-weight:bold;">
-          Manage Your Session
-        </a>
-
-        <p style="margin-top: 30px;">Thank you for using qwip!</p>
-
-        <hr style="border: none; border-top: 1px solid #eee; margin: 40px 0;" />
-
-        <p style="font-size: 12px; color: #777; margin: 0;">
-          © 2025 qwip Ltd. All rights reserved.<br />
-          <a href="https://qwip.co.uk/privacy-policy" style="color: #777; text-decoration: underline;">Privacy Policy</a> |
-          <a href="https://qwip.co.uk/support" style="color: #777; text-decoration: underline;">Contact Us</a><br />
-          Qwip Ltd, 128 City Road, London, EC1V 2NX
-        </p>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>qwip</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Funnel+Display:wght@400;700&family=Cormorant+Garamond:ital@1&family=DM+Sans:wght@400;500;600;700&display=swap');
+    body {{ margin: 0; padding: 0; background-color: #f2f0ec; font-family: 'DM Sans', Arial, sans-serif; color: #1f3d32; -webkit-font-smoothing: antialiased; }}
+    .outer {{ padding: 40px 16px; }}
+    .card {{ max-width: 560px; margin: 0 auto; background: #FDFBF7; border-radius: 12px; overflow: hidden; }}
+    .inner {{ padding: 44px 40px 36px; }}
+    .logo {{ font-family: 'Funnel Display', sans-serif; font-size: 32px; font-weight: 700; color: #1f3d32; text-decoration: none; display: block; margin-bottom: 28px; }}
+    .divider {{ height: 1px; background: #c8ddd2; margin-bottom: 32px; }}
+    h1 {{ font-family: 'Funnel Display', sans-serif; font-size: 26px; font-weight: 700; margin: 0 0 12px; color: #1f3d32; line-height: 1.2; }}
+    p {{ font-size: 15px; line-height: 1.7; color: #4a6b5c; margin: 0 0 16px; }}
+    .code-block {{ font-family: 'Funnel Display', sans-serif; font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #1f3d32; margin: 28px 0; text-align: center; background: #f0ede7; border-radius: 10px; padding: 20px; }}
+    .btn {{ display: inline-block; background: #1f3d32; color: #ffffff !important; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; font-size: 14px; font-family: 'DM Sans', sans-serif; }}
+    .tagline {{ margin-top: 28px; font-size: 14px; color: #6b8f7e; }}
+    .accent {{ font-style: italic; font-family: 'Cormorant Garamond', Georgia, serif; font-size: 16px; }}
+    .footer-bar {{ background: #1f3d32; padding: 24px 40px; }}
+    .footer-bar p {{ color: #a3c4b3; font-size: 12px; margin: 0 0 4px; }}
+    .footer-bar a {{ color: #a3c4b3; text-decoration: underline; }}
+    .footer-bar .brand {{ font-family: 'Funnel Display', sans-serif; color: #ffffff; font-size: 16px; font-weight: 700; margin-bottom: 8px; }}
+  </style>
+</head>
+<body>
+  <div class="outer">
+    <div class="card">
+      <div class="inner">
+        <a href="https://qwip.co.uk" class="logo">qwip</a>
+        <div class="divider"></div>
+        <h1>your pod is ready</h1>
+        <p>Hi there — your session at <strong style="color:#1f3d32;">{session.pod_name}</strong> starting at <strong style="color:#1f3d32;">{formatted_start_time}</strong> is confirmed and ready to go.</p>
+        <p>Head to <strong style="color:#1f3d32;">{session.address}</strong>, and use the access code below.</p>
+        <div class="code-block">{spaced_code}</div>
+        <div style="text-align:center; margin: 28px 0;">
+          <a href="https://qwip.co.uk/session?t={session.session_token}" class="btn">Manage Session</a>
+        </div>
+        <p class="tagline">quiet, on demand. <span class="accent">anywhere.</span></p>
+      </div>
+      <div class="footer-bar">
+        <p class="brand">qwip</p>
+        <p>Private, soundproof pods in the places you already are.</p>
+        <p style="margin-top: 12px;"><a href="https://qwip.co.uk/privacy-policy">Privacy Policy</a>&nbsp;&nbsp;·&nbsp;&nbsp;<a href="https://qwip.co.uk/support">Contact Us</a></p>
       </div>
     </div>
-  </body>
-</html>
-"""
+  </div>
+</body>
+</html>"""
 
     return {"subject": subject, "content": content}
 
