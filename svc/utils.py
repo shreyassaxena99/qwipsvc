@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from logger import logging
 
 from svc.custom_types import DictWithStringKeys
@@ -29,6 +30,9 @@ def _ordinal(n: int) -> str:
 
 def format_datetime_for_email(iso_str: str) -> str:
     dt = datetime.fromisoformat(iso_str)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    dt = dt.astimezone(ZoneInfo("Europe/London"))
     day_with_suffix = _ordinal(dt.day)
     month = dt.strftime("%B")
     year = dt.year
