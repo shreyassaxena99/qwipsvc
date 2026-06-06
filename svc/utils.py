@@ -36,9 +36,5 @@ def format_datetime_for_email(iso_str: str) -> str:
     day_with_suffix = _ordinal(dt.day)
     month = dt.strftime("%B")
     year = dt.year
-    hour_str = (
-        dt.strftime("%-I%p")
-        if hasattr(dt, "strftime")
-        else dt.strftime("%I%p").lstrip("0")
-    )  # Handles 12-hour format
+    hour_str = dt.strftime("%-I:%M%p").lower()
     return f"{day_with_suffix} {month} {year} @ {hour_str}"
