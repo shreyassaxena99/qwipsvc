@@ -288,6 +288,31 @@ def update_session_checkout_photo(
         raise SupabaseError(f"Failed to update checkout photo for {session_id=}") from e
 
 
+def save_feedback_token(client: Client, session_id: str, feedback_token: str) -> None:
+    try:
+        client.table("pod_sessions").update({"feedback_jwt_token": feedback_token}).eq(
+            "id", session_id
+        ).execute()
+    except APIError as e:
+        logger.error(f"Error saving feedback token for session {session_id}: {e}")
+        raise SupabaseError(f"Failed to save feedback token for {session_id=}") from e
+
+
+def get_sessions_without_feedback_token(client: Client) -> list[DictWithStringKeys]:
+    try:
+        result = (
+            client.table("pod_sessions")
+            .select("id, user_email")
+            .not_.is_("end_time", "null")
+            .is_("feedback_jwt_token", "null")
+            .execute()
+        )
+        return result.data
+    except APIError as e:
+        logger.error(f"Error fetching sessions without feedback token: {e}")
+        raise SupabaseError("Failed to fetch sessions without feedback token") from e
+
+
 def add_session_to_invalid_payment_attempts(
     client: Client, session_id: str, amount: int
 ) -> None:

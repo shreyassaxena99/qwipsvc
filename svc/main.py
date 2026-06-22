@@ -26,6 +26,7 @@ from svc.database_accessor import (
     get_provisioning_by_session_id,
     get_session,
     get_session_by_setup_intent_id,
+    save_feedback_token,
     update_pod_status,
     update_session_checkout_photo,
 )
@@ -554,8 +555,9 @@ def end_session_request(
         background_tasks.add_task(deprovision_access_code_job, background_job_metadata)
 
         feedback_token = create_jwt_token(
-            {"session_id": session_id}, TokenScope.FEEDBACK
+            {TokenScope.FEEDBACK.value: {"session_id": session_id}}, TokenScope.FEEDBACK
         )
+        save_feedback_token(supabase, session_id, feedback_token)
         return EndSessionResponse(
             status=RESPONSE_STATUS_SUCCESS, feedback_token=feedback_token
         )
