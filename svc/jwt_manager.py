@@ -16,6 +16,8 @@ def get_expiration_time(scope: TokenScope) -> int:
         return 10 * 60  # 10 minutes
     elif scope == TokenScope.SESSION:
         return 3 * 60 * 60  # 3 hours
+    elif scope == TokenScope.FEEDBACK:
+        return 7 * 24 * 60 * 60  # 7 days
     else:
         raise ValueError("Invalid token scope")
 

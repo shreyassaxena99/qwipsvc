@@ -304,7 +304,10 @@ def get_provisioning_status_request(
 @app.get("/api/get-session-data")
 def get_session_data_request(token: str = Depends(get_token)) -> SessionDataResponse:
     try:
-        payload = verify_jwt_token(token, TokenScope.SESSION)
+        try:
+            payload = verify_jwt_token(token, TokenScope.SESSION)
+        except ValueError:
+            payload = verify_jwt_token(token, TokenScope.FEEDBACK)
         supabase = create_supabase_client()
         session_metadata = get_session(supabase, payload["session_id"])
         pod = get_pod_by_id(supabase, session_metadata["pod_id"])
@@ -320,6 +323,7 @@ def get_session_data_request(token: str = Depends(get_token)) -> SessionDataResp
                     else get_access_code(session_metadata["access_code_id"])
                 )
             ),
+            user_email=session_metadata.get("user_email"),
         )
         pod_data = PodData(
             name=pod["name"], address=pod["address"], price_per_minute=pod["price"]
@@ -549,7 +553,12 @@ def end_session_request(
         )
         background_tasks.add_task(deprovision_access_code_job, background_job_metadata)
 
-        return EndSessionResponse(status=RESPONSE_STATUS_SUCCESS)
+        feedback_token = create_jwt_token(
+            {"session_id": session_id}, TokenScope.FEEDBACK
+        )
+        return EndSessionResponse(
+            status=RESPONSE_STATUS_SUCCESS, feedback_token=feedback_token
+        )
     except HTTPException:
         raise
     except Exception as e:

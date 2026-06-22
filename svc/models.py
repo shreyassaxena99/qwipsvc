@@ -82,6 +82,7 @@ class SessionData(BaseModel):
     start_dt: str
     end_dt: str | None
     access_code: int | None
+    user_email: str | None = None
 
 
 class PodData(BaseModel):
@@ -101,6 +102,7 @@ class GetLockStatusResponse(BaseModel):
 
 class EndSessionResponse(BaseModel):
     status: str
+    feedback_token: str | None = None
 
 
 class UploadCheckoutPhotoResponse(BaseModel):

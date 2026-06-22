@@ -4,6 +4,7 @@ from enum import Enum
 class TokenScope(Enum):
     PROVISIONING = "provisioning"
     SESSION = "session"
+    FEEDBACK = "feedback"
 
 class ProvisionStatus(Enum):
     DRAFT = "draft"
