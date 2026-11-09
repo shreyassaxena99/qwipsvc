@@ -25,7 +25,7 @@ Back up the table first. The migration changes live security and messaging behav
 | `GET /api/reservations/availability?pod_id=...&day=YYYY-MM-DD` | Start times and allowed durations for one London date. |
 | `POST /api/reservations` | Creates a held booking and Stripe PaymentIntent. Returns the booking ID, client secret, amount, and hold expiry. |
 | `GET /api/reservations/{id}/status` | Returns status and whether the code email was sent. Never returns the code. |
-| `POST /webhook/reservations/stripe` | Signed `payment_intent.succeeded` events. Confirms a booking or refunds a payment arriving after hold expiry. |
+| `POST /webhook/stripe` | Existing signed Stripe webhook. `payment_intent.succeeded` events for reservations confirm a booking or refund a payment arriving after hold expiry. |
 
 `POST /api/reservations` accepts `pod_id`, an ISO 8601 `start_at` with timezone,
 `duration_minutes`, `customer_name`, `customer_email`, and optional international-format `customer_phone`.
@@ -75,9 +75,11 @@ or disable a static physical code. Handle refunds separately in Stripe.
 ## Configuration
 
 Required: `SUPABASE_URL`, service-role `SUPABASE_KEY`, `STRIPE_SECRET`,
-`STRIPE_RESERVATION_WEBHOOK_SECRET`, `RESEND_API_KEY`, `RESERVATION_WORKER_TOKEN`,
-`RESERVATION_LOVABLE_TOKEN`, and `RESERVATION_ADMIN_TOKEN`. Register the reservation webhook in Stripe for
-`payment_intent.succeeded` at `/webhook/reservations/stripe`.
+`STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `RESERVATION_WORKER_TOKEN`,
+`RESERVATION_LOVABLE_TOKEN`, and `RESERVATION_ADMIN_TOKEN`. Keep the existing
+`/webhook/stripe` destination and ensure it subscribes to `payment_intent.succeeded`
+with a snapshot payload. The same Stripe API key and endpoint signing secret serve both
+flows; the handler routes reservation payments by their `purpose=pod_reservation` metadata.
 
 Meta credentials and template configuration stay in the Lovable server function. The
 backend determines template names and parameters and records delivery outcomes. If Meta

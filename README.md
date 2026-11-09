@@ -7,7 +7,7 @@ FastAPI backend for Qwip pods. It contains two distinct booking flows:
 | Walk-up session | Card saved up front; usage charged when the session ends | Seam code or encrypted static code | `pod_sessions` |
 | Scheduled reservation | Fixed £15/hour amount paid before the booking is confirmed | Code selected from `svc/random_static_codes.txt` and emailed | `pod_reservations` |
 
-The scheduled reservation API is implemented in this repository, but its [database migration](migrations/20261109_reservation_api.sql), Stripe webhook, schedulers, and Lovable integration must be configured during cutover. Repository code alone does not establish that the new flow is live. See the [reservation API guide](docs/reservation-api.md) for the full handoff contract.
+The scheduled reservation API is implemented in this repository, but its [database migration](migrations/20261109_reservation_api.sql), existing Stripe webhook subscription, schedulers, and Lovable integration must be configured during cutover. Repository code alone does not establish that the new flow is live. See the [reservation API guide](docs/reservation-api.md) for the full handoff contract.
 
 **Stack:** Python 3.12 · FastAPI · Supabase/PostgreSQL · Stripe · Seam · Resend. Lovable's server function uses its existing Meta connector for reservation WhatsApp messages.
 
@@ -31,7 +31,7 @@ The scheduled reservation API is implemented in this repository, but its [databa
 | `GET` | `/api/lock-status` | Public | Seam lock status, or locked in static-code mode. |
 | `POST` | `/api/session/upload-checkout-photo` | Session JWT | Upload required checkout photo. |
 | `POST` | `/api/end-session` | Session JWT | End session and attempt final charge. |
-| `POST` | `/webhook/stripe` | Stripe signature | Validates events; its current processor only logs them. |
+| `POST` | `/webhook/stripe` | Stripe signature | Routes reservation payments; the walk-up event processor currently only logs other events. |
 
 `GET /api/create-setup-intent` and `POST /api/confirm-booking` remain for the older flow and are deprecated.
 
@@ -53,7 +53,7 @@ The scheduled reservation API is implemented in this repository, but its [databa
 | `GET` | `/api/reservations/availability` | Public | Available starts and durations for a pod and London date. |
 | `POST` | `/api/reservations` | Public | Create hold and payment; returns a Stripe client secret. |
 | `GET` | `/api/reservations/{id}/status` | Public | Booking status and whether the code email was sent; never the code. |
-| `POST` | `/webhook/reservations/stripe` | Stripe signature | Authoritative payment confirmation. |
+| `POST` | `/webhook/stripe` | Stripe signature | Confirm a paid reservation from `payment_intent.succeeded`. |
 | `POST` | `/internal/reservations/dispatch` | Worker bearer token | Expire holds and send due email jobs. |
 | `POST` | `/internal/reservations/whatsapp/claim` | Lovable bearer token | Lease due WhatsApp jobs to the Lovable server function. |
 | `POST` | `/internal/reservations/whatsapp/ack` | Lovable bearer token | Record success or failure and schedule retries. |
@@ -75,8 +75,7 @@ Copy [`.env.example`](.env.example) to `.env` for local development and replace 
 | --- | --- |
 | `SUPABASE_URL`, `SUPABASE_KEY` | Database access; reservation functions require a service-role key. |
 | `STRIPE_SECRET` | Server-side Stripe API. |
-| `STRIPE_WEBHOOK_SECRET` | Legacy walk-up webhook signing secret. |
-| `STRIPE_RESERVATION_WEBHOOK_SECRET` | Dedicated reservation webhook signing secret. |
+| `STRIPE_WEBHOOK_SECRET` | Signing secret for the shared `/webhook/stripe` endpoint. |
 | `RESEND_API_KEY` | Access and reservation emails. |
 | `JWT_SECRET_KEY` | Walk-up session and provisioning JWTs. |
 | `SEAM_API_KEY` | Seam smart-lock access in dynamic-code mode. |
@@ -108,6 +107,6 @@ make service
 
 `make service` starts Uvicorn with reload at `http://localhost:8000`. `make test` runs the test suite; `make format` runs Ruff, Black, isort, and pylint. The current unit suite uses mocks and does not verify live Stripe, Supabase, Resend, Seam, or Meta integration.
 
-The [Procfile](Procfile) defines the Railway web command with `$PORT`. Register separate Stripe webhook destinations for `/webhook/stripe` and `/webhook/reservations/stripe` if both flows are used. Run the reservation email dispatcher once per minute, and schedule the Lovable server function to claim due WhatsApp jobs at least once per minute.
+The [Procfile](Procfile) defines the Railway web command with `$PORT`. The existing Stripe destination for `/webhook/stripe` must subscribe to `payment_intent.succeeded` with a snapshot payload; no second destination is needed. Run the reservation email dispatcher once per minute, and schedule the Lovable server function to claim due WhatsApp jobs at least once per minute.
 
 </details>

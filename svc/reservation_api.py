@@ -10,7 +10,7 @@ from uuid import UUID
 from fastapi import APIRouter, Header, HTTPException, Request
 from pydantic import BaseModel, EmailStr, Field
 from postgrest.exceptions import APIError
-from stripe import Webhook
+from stripe import Event
 
 from svc.database_accessor import create_supabase_client, get_pod_by_id
 from svc.payments_manager import create_stripe_client
@@ -146,20 +146,13 @@ def _code_from_pool() -> str:
     return secrets.choice(codes)
 
 
-@router.post("/webhook/reservations/stripe")
-async def reservation_stripe_webhook(request: Request):
-    secret = os.getenv("STRIPE_RESERVATION_WEBHOOK_SECRET")
-    if not secret:
-        raise HTTPException(503, "Reservation webhook is not configured")
-    try:
-        event = Webhook.construct_event(await request.body(), request.headers.get("stripe-signature"), secret)
-    except Exception as exc:
-        raise HTTPException(400, "Invalid Stripe webhook") from exc
+def process_reservation_stripe_event(event: Event) -> bool:
+    """Handle prepaid reservation payments after the shared webhook verifies Stripe's signature."""
     if event.type != "payment_intent.succeeded":
-        return {"received": True}
+        return False
     payment = event.data.object
     if payment.metadata.get("purpose") != "pod_reservation":
-        return {"received": True}
+        return False
     try:
         booking_id = UUID(payment.metadata["reservation_id"])
     except (KeyError, ValueError) as exc:
@@ -180,10 +173,10 @@ async def reservation_stripe_webhook(request: Request):
         )
         create_supabase_client().table("pod_reservations").update({"status": "cancelled"}).eq("id", str(booking_id)).eq("status", "pending").execute()
         logger.warning("Refunded payment for expired reservation %s", booking_id)
-        return {"received": True}
+        return True
     if outcome not in ("paid", "already_paid"):
         raise HTTPException(409, "Reservation could not be confirmed")
-    return {"received": True}
+    return True
 
 
 def _require_token(provided: str | None, setting: str) -> None:

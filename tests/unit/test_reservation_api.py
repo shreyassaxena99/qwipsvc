@@ -76,18 +76,30 @@ def test_signed_payment_webhook_confirms_matching_booking():
                             data=SimpleNamespace(object=payment))
     db = MagicMock()
     db.rpc.return_value.execute.return_value.data = "paid"
-    with (patch.dict("os.environ", {"STRIPE_RESERVATION_WEBHOOK_SECRET": "whsec_test"}),
-          patch("svc.reservation_api.Webhook.construct_event", return_value=event),
+    with (patch("svc.main.create_stripe_event", return_value=event),
           patch("svc.reservation_api._booking", return_value={
               "stripe_payment_intent_id": "pi_test", "amount_pence": 1875,
           }),
           patch("svc.reservation_api._code_from_pool", return_value="12345"),
           patch("svc.reservation_api.create_supabase_client", return_value=db)):
-        response = TestClient(app).post("/webhook/reservations/stripe", content=b"signed")
+        response = TestClient(app).post("/webhook/stripe", content=b"signed")
     assert response.status_code == 200
     db.rpc.assert_called_once_with("confirm_paid_reservation", {
         "p_reservation_id": booking_id, "p_payment_intent_id": "pi_test", "p_access_code": "12345",
     })
+
+
+def test_shared_webhook_ignores_unrelated_payment_for_reservations():
+    payment = SimpleNamespace(metadata={"purpose": "walk_up"})
+    event = SimpleNamespace(type="payment_intent.succeeded",
+                            data=SimpleNamespace(object=payment))
+    with (patch("svc.main.create_stripe_event", return_value=event),
+          patch("svc.main.process_event") as walkup_processor,
+          patch("svc.reservation_api.create_supabase_client") as database):
+        response = TestClient(app).post("/webhook/stripe", content=b"signed")
+    assert response.status_code == 200
+    walkup_processor.assert_called_once_with(event)
+    database.assert_not_called()
 
 
 def test_whatsapp_claim_requires_server_token():

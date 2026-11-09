@@ -72,7 +72,10 @@ from svc.seam_accessor import (
     is_device_locked,
     set_access_code,
 )
-from svc.reservation_api import router as reservation_router
+from svc.reservation_api import (
+    process_reservation_stripe_event,
+    router as reservation_router,
+)
 
 app = FastAPI()
 app.include_router(reservation_router)
@@ -155,16 +158,18 @@ async def stripe_webhook(request: Request) -> DictWithStringKeys:
     try:
         payload = await request.body()
         signature_header = request.headers.get("stripe-signature")
-        try:
-            event = create_stripe_event(payload, signature_header)  # type: ignore
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=str(e)) from e
-
-        process_event(event)
-
-        return {"status": RESPONSE_STATUS_SUCCESS}
+        event = create_stripe_event(payload, signature_header)  # type: ignore
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        raise HTTPException(status_code=400, detail="Invalid Stripe webhook") from e
+    try:
+        if not process_reservation_stripe_event(event):
+            process_event(event)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Stripe webhook processing failed")
+        raise HTTPException(status_code=500, detail="Stripe webhook processing failed") from e
+    return {"status": RESPONSE_STATUS_SUCCESS}
 
 
 @app.post("/api/booking/finalize")
