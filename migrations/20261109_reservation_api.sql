@@ -1,5 +1,7 @@
 -- Apply to the Supabase database before enabling the reservation API.
 -- Existing paid overlaps must be resolved before adding the exclusion constraint.
+begin;
+
 create extension if not exists btree_gist;
 
 -- This service now owns reminder delivery; avoid queuing a second reminder
@@ -33,12 +35,22 @@ update public.pod_reservations
 set status = 'cancelled'
 where status = 'pending' and hold_expires_at is null;
 
-alter table public.pod_reservations
-  add constraint pod_reservations_no_overlap
-  exclude using gist (
-    pod_id with =,
-    tstzrange(start_at, end_at, '[)') with &&
-  ) where (status in ('pending', 'paid'));
+do $migration$
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conrelid = 'public.pod_reservations'::regclass
+      and conname = 'pod_reservations_no_overlap'
+  ) then
+    alter table public.pod_reservations
+      add constraint pod_reservations_no_overlap
+      exclude using gist (
+        pod_id with =,
+        tstzrange(start_at, end_at, '[)') with &&
+      ) where (status in ('pending', 'paid'));
+  end if;
+end
+$migration$;
 
 create or replace function public.create_pod_reservation(
   p_pod_id text, p_pod_label text, p_start_at timestamptz,
@@ -106,7 +118,8 @@ begin
     select id from public.reservation_delivery_jobs
     where kind = 'email' and due_at <= now() and attempts < 10
       and (status = 'pending' or (status = 'processing' and leased_until < now()))
-    order by due_at for update skip locked limit least(greatest(p_limit, 1), 50)
+    order by due_at limit least(greatest(p_limit, 1), 50)
+    for update skip locked
   )
   update public.reservation_delivery_jobs j
     set status = 'processing', leased_until = now() + interval '2 minutes',
@@ -162,8 +175,8 @@ begin
       and j.attempts < case when j.kind = 'end_reminder' then 3 else 10 end
       and (j.kind <> 'end_reminder' or b.end_at > now())
       and (j.kind <> 'booking_whatsapp' or b.code_emailed_at is not null)
-    order by j.due_at for update of j skip locked
-    limit least(greatest(p_limit, 1), 50)
+    order by j.due_at limit least(greatest(p_limit, 1), 50)
+    for update of j skip locked
   )
   update public.reservation_delivery_jobs j
     set status = 'processing', leased_until = now() + interval '2 minutes',
@@ -197,7 +210,8 @@ begin
       where id = p_job_id;
     return 'sent';
   end if;
-  if job.attempts >= case when job.kind = 'end_reminder' then 3 else 10 end
+  if (job.kind = 'end_reminder' and job.attempts >= 3)
+    or (job.kind = 'booking_whatsapp' and job.attempts >= 10)
     or (job.kind = 'end_reminder' and now() >=
       (select end_at from public.pod_reservations where id = job.reservation_id)) then
     update public.reservation_delivery_jobs
@@ -253,3 +267,5 @@ grant execute on function public.claim_reservation_whatsapp_jobs(integer) to ser
 grant execute on function public.ack_reservation_whatsapp_job(uuid,uuid,boolean,text) to service_role;
 grant execute on function public.cancel_pod_reservation(uuid) to service_role;
 grant execute on function public.expire_pending_pod_reservations() to service_role;
+
+commit;
