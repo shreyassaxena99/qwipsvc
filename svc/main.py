@@ -72,8 +72,10 @@ from svc.seam_accessor import (
     is_device_locked,
     set_access_code,
 )
+from svc.reservation_api import router as reservation_router
 
 app = FastAPI()
+app.include_router(reservation_router)
 
 app.add_middleware(
     CORSMiddleware,
