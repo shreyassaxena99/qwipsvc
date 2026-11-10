@@ -35,8 +35,10 @@ def send_reservation_email(booking: dict) -> None:
         raise RuntimeError("RESEND_API_KEY is not configured")
     resend.api_key = os.environ["RESEND_API_KEY"]
     values = {key: html.escape(value, quote=True) for key, value in _details(booking).items()}
+    is_rescheduled = booking.get("rescheduled_at") is not None
     content = (
-        f"<p>Hi {values['name']}, your booking at {values['pod']} is confirmed.</p>"
+        f"<p>Hi {values['name']}, your booking at {values['pod']} "
+        f"{'has been updated' if is_rescheduled else 'is confirmed'}.</p>"
         f"<p>{values['start']}–{values['end']} · {values['price']}</p>"
         f"<p>Access code: <strong>{values['code']}</strong></p>"
         f"<p>Directions: {values['directions']}</p>"
@@ -44,7 +46,8 @@ def send_reservation_email(booking: dict) -> None:
         f"<a href=\"{values['support_url']}\">Support</a></p>"
     )
     result = resend.Emails.send({"from": "hello@qwip.co.uk", "to": booking["customer_email"],
-                                 "subject": "Your qwip pod booking is confirmed", "html": content})
+                                 "subject": "Your qwip pod booking has been updated" if is_rescheduled
+                                            else "Your qwip pod booking is confirmed", "html": content})
     if not result.get("id"):
         raise RuntimeError("Email provider did not confirm delivery request")
 

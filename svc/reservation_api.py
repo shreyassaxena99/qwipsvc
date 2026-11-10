@@ -31,6 +31,10 @@ class ReservationRequest(BaseModel):
     customer_phone: str | None = Field(default=None, max_length=30)
 
 
+class RescheduleRequest(BaseModel):
+    start_at: datetime
+
+
 def _blocked(day: date) -> bool:
     # Server-side fallback until the website's blocked-date table is identified.
     return day.isoformat() in {item.strip() for item in os.getenv("RESERVATION_BLOCKED_DATES", "").split(",")}
@@ -92,12 +96,9 @@ def reservable_pods():
     return {"pods": rows}
 
 
-@router.get("/api/reservations/me")
-def my_reservations(authorization: str | None = Header(default=None)):
-    """List bookings for the verified Supabase account email, without door codes."""
+def _verified_account_email(db, authorization: str | None) -> str:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Sign in to view your bookings")
-    db = create_supabase_client()
     try:
         response = db.auth.get_user(authorization[7:])
         user = response.user if response else None
@@ -105,9 +106,17 @@ def my_reservations(authorization: str | None = Header(default=None)):
         raise HTTPException(401, "Your session has expired; please sign in again") from exc
     if not user or not user.email or not user.email_confirmed_at:
         raise HTTPException(401, "A verified email is required to view bookings")
+    return user.email.lower()
+
+
+@router.get("/api/reservations/me")
+def my_reservations(authorization: str | None = Header(default=None)):
+    """List bookings for the verified Supabase account email, without door codes."""
+    db = create_supabase_client()
+    email = _verified_account_email(db, authorization)
     rows = (db.table("pod_reservations")
             .select("id,pod_id,pod_label,start_at,end_at,duration_minutes,amount_pence,status,hold_expires_at,code_emailed_at")
-            .eq("customer_email", user.email.lower())
+            .eq("customer_email", email)
             .order("start_at", desc=True).execute().data)
     now = datetime.now(timezone.utc)
     bookings = []
@@ -122,6 +131,43 @@ def my_reservations(authorization: str | None = Header(default=None)):
             "status": status, "code_emailed": row.get("code_emailed_at") is not None,
         })
     return {"bookings": bookings}
+
+
+@router.post("/api/reservations/{reservation_id}/reschedule")
+def reschedule_reservation(reservation_id: UUID, body: RescheduleRequest,
+                           authorization: str | None = Header(default=None)):
+    """Move a paid booking at the same pod and duration, with no new charge."""
+    db = create_supabase_client()
+    email = _verified_account_email(db, authorization)
+    rows = (db.table("pod_reservations")
+            .select("id,customer_email,status,duration_minutes,start_at,end_at")
+            .eq("id", str(reservation_id)).limit(1).execute().data)
+    if not rows or rows[0]["customer_email"].lower() != email:
+        raise HTTPException(404, "Reservation not found")
+    booking = rows[0]
+    if booking["status"] != "paid" or datetime.fromisoformat(booking["start_at"]) <= datetime.now(timezone.utc) + timedelta(hours=1):
+        raise HTTPException(409, "This booking can no longer be changed")
+    start, end, _ = reservation_window(body.start_at, booking["duration_minutes"])
+    if _blocked(start.astimezone(LONDON).date()):
+        raise HTTPException(422, "This date is unavailable")
+    if start == datetime.fromisoformat(booking["start_at"]):
+        return {"status": "unchanged", "reservation_id": str(reservation_id),
+                "start_at": booking["start_at"], "end_at": booking["end_at"]}
+    try:
+        outcome = db.rpc("reschedule_paid_pod_reservation", {
+            "p_reservation_id": str(reservation_id), "p_customer_email": email,
+            "p_start_at": start.isoformat(), "p_end_at": end.isoformat(),
+        }).execute().data
+    except APIError as exc:
+        if exc.code == "23P01":
+            raise HTTPException(409, "This time is no longer available") from exc
+        raise
+    if outcome == "not_found":
+        raise HTTPException(404, "Reservation not found")
+    if outcome != "moved":
+        raise HTTPException(409, "This booking can no longer be changed")
+    return {"status": "rescheduled", "reservation_id": str(reservation_id),
+            "start_at": start, "end_at": end}
 
 
 @router.post("/api/reservations", status_code=201)

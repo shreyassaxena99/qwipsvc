@@ -91,6 +91,83 @@ def test_my_bookings_rejects_invalid_token():
     db.table.assert_not_called()
 
 
+def _reschedule_db(email="ada@example.com", status="paid"):
+    db = MagicMock()
+    db.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(
+        email="ada@example.com", email_confirmed_at="2026-11-01T00:00:00Z"))
+    current_start = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+        hour=12, minute=0, second=0, microsecond=0)
+    db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [{
+        "id": "00000000-0000-0000-0000-000000000001", "customer_email": email,
+        "status": status, "duration_minutes": 60, "start_at": current_start.isoformat(),
+        "end_at": (current_start + timedelta(hours=1)).isoformat(),
+    }]
+    db.rpc.return_value.execute.return_value.data = "moved"
+    return db, current_start + timedelta(hours=2)
+
+
+def test_reschedule_requires_verified_account():
+    response = TestClient(app).post(
+        "/api/reservations/00000000-0000-0000-0000-000000000001/reschedule",
+        json={"start_at": (datetime.now(timezone.utc) + timedelta(days=1)).isoformat()},
+    )
+    assert response.status_code == 401
+
+
+def test_reschedule_rejects_other_customers_booking():
+    db, new_start = _reschedule_db(email="someone-else@example.com")
+    with patch("svc.reservation_api.create_supabase_client", return_value=db):
+        response = TestClient(app).post(
+            "/api/reservations/00000000-0000-0000-0000-000000000001/reschedule",
+            json={"start_at": new_start.isoformat()},
+            headers={"Authorization": "Bearer valid-token"},
+        )
+    assert response.status_code == 404
+    db.rpc.assert_not_called()
+
+
+def test_reschedule_keeps_pod_duration_and_payment_unchanged():
+    db, new_start = _reschedule_db()
+    with patch("svc.reservation_api.create_supabase_client", return_value=db):
+        response = TestClient(app).post(
+            "/api/reservations/00000000-0000-0000-0000-000000000001/reschedule",
+            json={"start_at": new_start.isoformat()},
+            headers={"Authorization": "Bearer valid-token"},
+        )
+    assert response.status_code == 200
+    assert response.json()["status"] == "rescheduled"
+    assert "access_code" not in response.json()
+    db.rpc.assert_called_once()
+    assert db.rpc.call_args.args[0] == "reschedule_paid_pod_reservation"
+    assert db.rpc.call_args.args[1]["p_customer_email"] == "ada@example.com"
+
+
+def test_reschedule_reports_slot_conflict():
+    db, new_start = _reschedule_db()
+    from postgrest.exceptions import APIError
+    db.rpc.return_value.execute.side_effect = APIError({
+        "message": "overlap", "code": "23P01", "details": "", "hint": ""})
+    with patch("svc.reservation_api.create_supabase_client", return_value=db):
+        response = TestClient(app).post(
+            "/api/reservations/00000000-0000-0000-0000-000000000001/reschedule",
+            json={"start_at": new_start.isoformat()},
+            headers={"Authorization": "Bearer valid-token"},
+        )
+    assert response.status_code == 409
+
+
+def test_reschedule_rejects_unpaid_booking():
+    db, new_start = _reschedule_db(status="pending")
+    with patch("svc.reservation_api.create_supabase_client", return_value=db):
+        response = TestClient(app).post(
+            "/api/reservations/00000000-0000-0000-0000-000000000001/reschedule",
+            json={"start_at": new_start.isoformat()},
+            headers={"Authorization": "Bearer valid-token"},
+        )
+    assert response.status_code == 409
+    db.rpc.assert_not_called()
+
+
 def test_worker_requires_private_token():
     response = TestClient(app).post("/internal/reservations/dispatch")
     assert response.status_code == 401

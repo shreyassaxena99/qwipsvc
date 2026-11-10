@@ -26,6 +26,8 @@ Back up the table first. The migration changes live security and messaging behav
 | `GET /api/reservations/availability?pod_id=...&day=YYYY-MM-DD` | Start times and allowed durations for one London date. |
 | `POST /api/reservations` | Creates a held booking and Stripe PaymentIntent. Returns the booking ID, client secret, amount, and hold expiry. |
 | `GET /api/reservations/{id}/status` | Returns status and whether the code email was sent. Never returns the code. |
+| `GET /api/reservations/me` | Requires a Supabase access token. Lists bookings for the verified account email without access codes. |
+| `POST /api/reservations/{id}/reschedule` | Requires a Supabase access token. Moves the account's paid booking to another time at the same pod and duration. |
 | `POST /webhook/stripe` | Existing signed Stripe webhook. `payment_intent.succeeded` events for reservations confirm a booking or refund a payment arriving after hold expiry. |
 
 `POST /api/reservations` accepts `pod_id`, an ISO 8601 `start_at` with timezone,
@@ -34,6 +36,29 @@ The server enforces one-hour notice, a 21-day booking window, 15-minute starts a
 one to four hours, a 10 PM London finish, blocked dates, and £15/hour.
 The browser cannot set the price or mark a booking paid.
 Email retry is handled by the backend worker. Browser code has no delivery controls.
+
+## Rescheduling
+
+Apply `migrations/20261110_reschedule_paid_reservations.sql` **before** deploying the
+reschedule endpoint. It adds a `rescheduled_at` timestamp and an atomic database function;
+it does not create another booking table. The existing overlap constraint rejects a time
+that has become unavailable.
+
+Send `POST /api/reservations/{id}/reschedule` with
+`Authorization: Bearer <Supabase access token>` and JSON body
+`{"start_at":"2026-11-12T12:00:00+00:00"}`. The token must belong to a verified account
+whose email matches the booking. Only paid bookings more than one hour before their
+original start can move. The new start follows the ordinary booking rules, including
+one-hour notice, 15-minute steps, the 21-day window, blocked dates, and a 10 PM London
+finish. The pod, duration, amount, payment, and access code remain unchanged.
+The endpoint returns `rescheduled` with the new times, `unchanged` if the time was the
+same, 401 for missing/invalid authentication, 404 for another account's booking, 409
+for an ineligible booking or occupied slot, and 422 for an invalid requested time.
+
+Rescheduling requeues the confirmation email with the new time and updates the end
+reminder's due time. Any booking WhatsApp still queued for the old time is cancelled;
+an already sent WhatsApp cannot be retracted. The updated email is the authoritative
+notice. Cancellation and refunds are separate and are not exposed by this endpoint.
 
 ## Private endpoints
 
