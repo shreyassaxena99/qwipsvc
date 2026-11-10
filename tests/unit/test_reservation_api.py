@@ -41,6 +41,18 @@ def test_public_status_never_returns_access_code():
     assert "access_code" not in response.json()
 
 
+def test_pod_catalogue_exposes_only_booking_display_fields():
+    db = MagicMock()
+    db.table.return_value.select.return_value.order.return_value.execute.return_value.data = [
+        {"id": "pod_1", "name": "Westfield", "address": "London"}
+    ]
+    with patch("svc.reservation_api.create_supabase_client", return_value=db):
+        response = TestClient(app).get("/api/reservations/pods")
+    assert response.status_code == 200
+    assert response.json() == {"pods": [{"id": "pod_1", "name": "Westfield", "address": "London"}]}
+    db.table.return_value.select.assert_called_once_with("id,name,address")
+
+
 def test_worker_requires_private_token():
     response = TestClient(app).post("/internal/reservations/dispatch")
     assert response.status_code == 401

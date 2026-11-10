@@ -84,6 +84,14 @@ def availability(pod_id: str, day: date):
     return {"date": day, "slots": slots}
 
 
+@router.get("/api/reservations/pods")
+def reservable_pods():
+    """Public catalogue for reservation clients; never expose lock or payment data."""
+    rows = (create_supabase_client().table("pods")
+            .select("id,name,address").order("name").execute().data)
+    return {"pods": rows}
+
+
 @router.post("/api/reservations", status_code=201)
 def create_reservation(body: ReservationRequest):
     start, end, amount = reservation_window(body.start_at, body.duration_minutes)

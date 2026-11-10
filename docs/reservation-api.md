@@ -22,6 +22,7 @@ Back up the table first. The migration changes live security and messaging behav
 
 | Endpoint | Purpose |
 | --- | --- |
+| `GET /api/reservations/pods` | Public list of bookable pod IDs, names, and addresses for app selection. |
 | `GET /api/reservations/availability?pod_id=...&day=YYYY-MM-DD` | Start times and allowed durations for one London date. |
 | `POST /api/reservations` | Creates a held booking and Stripe PaymentIntent. Returns the booking ID, client secret, amount, and hold expiry. |
 | `GET /api/reservations/{id}/status` | Returns status and whether the code email was sent. Never returns the code. |
