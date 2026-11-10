@@ -92,6 +92,38 @@ def reservable_pods():
     return {"pods": rows}
 
 
+@router.get("/api/reservations/me")
+def my_reservations(authorization: str | None = Header(default=None)):
+    """List bookings for the verified Supabase account email, without door codes."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(401, "Sign in to view your bookings")
+    db = create_supabase_client()
+    try:
+        response = db.auth.get_user(authorization[7:])
+        user = response.user if response else None
+    except Exception as exc:
+        raise HTTPException(401, "Your session has expired; please sign in again") from exc
+    if not user or not user.email or not user.email_confirmed_at:
+        raise HTTPException(401, "A verified email is required to view bookings")
+    rows = (db.table("pod_reservations")
+            .select("id,pod_id,pod_label,start_at,end_at,duration_minutes,amount_pence,status,hold_expires_at,code_emailed_at")
+            .eq("customer_email", user.email.lower())
+            .order("start_at", desc=True).execute().data)
+    now = datetime.now(timezone.utc)
+    bookings = []
+    for row in rows:
+        status = row["status"]
+        if status == "pending" and row.get("hold_expires_at") and datetime.fromisoformat(row["hold_expires_at"]) <= now:
+            status = "expired"
+        bookings.append({
+            "id": row["id"], "pod_id": row["pod_id"], "pod_label": row["pod_label"],
+            "start_at": row["start_at"], "end_at": row["end_at"],
+            "duration_minutes": row["duration_minutes"], "amount_pence": row["amount_pence"],
+            "status": status, "code_emailed": row.get("code_emailed_at") is not None,
+        })
+    return {"bookings": bookings}
+
+
 @router.post("/api/reservations", status_code=201)
 def create_reservation(body: ReservationRequest):
     start, end, amount = reservation_window(body.start_at, body.duration_minutes)

@@ -53,6 +53,44 @@ def test_pod_catalogue_exposes_only_booking_display_fields():
     db.table.return_value.select.assert_called_once_with("id,name,address")
 
 
+def test_my_bookings_requires_authentication():
+    response = TestClient(app).get("/api/reservations/me")
+    assert response.status_code == 401
+
+
+def test_my_bookings_use_verified_email_and_never_return_codes():
+    db = MagicMock()
+    db.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(
+        email="Ada@Example.com", email_confirmed_at="2026-11-01T00:00:00Z"))
+    db.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [{
+        "id": "booking-1", "pod_id": "pod-1", "pod_label": "Westfield",
+        "start_at": "2026-11-11T12:00:00+00:00", "end_at": "2026-11-11T13:00:00+00:00",
+        "duration_minutes": 60, "amount_pence": 1500, "status": "paid",
+        "hold_expires_at": None, "code_emailed_at": "2026-11-10T12:00:00+00:00",
+        "access_code": "12345", "stripe_payment_intent_id": "pi_secret",
+    }]
+    with patch("svc.reservation_api.create_supabase_client", return_value=db):
+        response = TestClient(app).get("/api/reservations/me",
+                                       headers={"Authorization": "Bearer valid-token"})
+    assert response.status_code == 200
+    db.auth.get_user.assert_called_once_with("valid-token")
+    db.table.return_value.select.return_value.eq.assert_called_once_with("customer_email", "ada@example.com")
+    booking = response.json()["bookings"][0]
+    assert booking["code_emailed"] is True
+    assert "access_code" not in booking
+    assert "stripe_payment_intent_id" not in booking
+
+
+def test_my_bookings_rejects_invalid_token():
+    db = MagicMock()
+    db.auth.get_user.side_effect = ValueError("invalid token")
+    with patch("svc.reservation_api.create_supabase_client", return_value=db):
+        response = TestClient(app).get("/api/reservations/me",
+                                       headers={"Authorization": "Bearer invalid-token"})
+    assert response.status_code == 401
+    db.table.assert_not_called()
+
+
 def test_worker_requires_private_token():
     response = TestClient(app).post("/internal/reservations/dispatch")
     assert response.status_code == 401
