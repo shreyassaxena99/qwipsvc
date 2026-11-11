@@ -95,6 +95,8 @@ Copy [`.env.example`](.env.example) to `.env` for local development and replace 
 
 Walk-up tables include `pods`, `pod_sessions`, `session_provisionings`, and `invalid_payment_attempts`. Scheduled bookings use `pod_reservations` plus `reservation_delivery_jobs` created by the [migration](migrations/20261109_reservation_api.sql). Apply that migration before routing live reservation traffic to this API. It revokes direct browser roles from those tables and removes the previous database reminder trigger; switch the website and reminder dispatcher in the same cutover.
 
+Apply the [occupancy migration](migrations/20261111_sync_pod_occupancy.sql) before deploying backend code that updates walk-up occupancy. It keeps `pods.in_use` true during an active paid reservation or a walk-up session and schedules a Supabase Cron reconciliation every minute. The migration runs an immediate reconciliation; it does not need an Edge Function.
+
 </details>
 
 <details>

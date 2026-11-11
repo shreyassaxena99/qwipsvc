@@ -122,9 +122,11 @@ def update_pod_status(client: Client, pod_id: str, in_use_status: bool) -> None:
         f"Updating pod {pod_id} status to {'in use' if in_use_status else 'available'}"
     )
     try:
-        client.table("pods").update({"in_use": in_use_status}).eq(
-            "id", pod_id
-        ).execute()
+        updated = client.rpc("set_walkup_pod_in_use", {
+            "p_pod_id": pod_id, "p_in_use": in_use_status,
+        }).execute().data
+        if not updated:
+            raise SupabaseError(f"Pod not found with {pod_id=}")
     except APIError as e:
         logger.error(f"Error updating pod {pod_id} status: {e}")
         raise SupabaseError(f"Failed to update pod status with {pod_id=}") from e

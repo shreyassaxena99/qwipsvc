@@ -97,6 +97,18 @@ The website's booking and pricing endpoints are unchanged. This cancellation end
 is also available to a verified website account using the same reservation email.
 Cancelling a booking does not revoke a static physical access code already sent.
 
+## Pod occupancy
+
+Apply `migrations/20261111_sync_pod_occupancy.sql` before deploying backend code
+that updates walk-up occupancy. The migration adds `pods.walkup_in_use`, preserves
+the existing walk-up flag, and makes `pods.in_use` the combined state of walk-up
+occupancy and a paid reservation whose time window currently contains `now()`.
+It runs one reconciliation immediately and schedules the same database function
+every minute using Supabase Cron. The walk-up backend calls a separate database
+function so ending a walk-up session cannot clear an active reservation's flag.
+Old `pod_sessions` rows with no end time are deliberately not treated as live
+occupancy; the existing walk-up flag remains the source for those sessions.
+
 ## Private endpoints
 
 `POST /internal/reservations/dispatch` requires `Authorization: Bearer <RESERVATION_WORKER_TOKEN>`.

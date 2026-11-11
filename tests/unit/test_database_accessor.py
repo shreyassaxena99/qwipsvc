@@ -145,14 +145,27 @@ def test_end_session_sets_end_time():
 
 def test_update_pod_status_in_use():
     client = _client()
+    client.rpc.return_value.execute.return_value.data = True
     update_pod_status(client, "pod_1", True)
-    client.table.return_value.update.assert_called_with({"in_use": True})
+    client.rpc.assert_called_once_with("set_walkup_pod_in_use", {
+        "p_pod_id": "pod_1", "p_in_use": True,
+    })
 
 
 def test_update_pod_status_available():
     client = _client()
+    client.rpc.return_value.execute.return_value.data = True
     update_pod_status(client, "pod_1", False)
-    client.table.return_value.update.assert_called_with({"in_use": False})
+    client.rpc.assert_called_once_with("set_walkup_pod_in_use", {
+        "p_pod_id": "pod_1", "p_in_use": False,
+    })
+
+
+def test_update_pod_status_rejects_missing_pod():
+    client = _client()
+    client.rpc.return_value.execute.return_value.data = False
+    with pytest.raises(SupabaseError, match="Pod not found"):
+        update_pod_status(client, "missing", True)
 
 
 # --- update_session_checkout_photo ---
