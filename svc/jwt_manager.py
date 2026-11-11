@@ -36,9 +36,8 @@ def verify_jwt_token(
     token: str, scope: TokenScope, secret_key=SECRET_KEY
 ) -> DictWithStringKeys:
     try:
-        logging.info(f"Verifying {token=} with scope: {scope}")
+        logger.debug("Verifying JWT with scope %s", scope.value)
         payload = jwt.decode(token, secret_key, algorithms=[DECRYPT_ALGORITHM])
-        logger.info(f"Decoded payload: {payload}")
         # sanity checks on the payload scope
         if scope.value not in payload:
             raise jwt.InvalidTokenError(

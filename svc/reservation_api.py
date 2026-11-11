@@ -111,26 +111,59 @@ def _verified_account_email(db, authorization: str | None) -> str:
 
 @router.get("/api/reservations/me")
 def my_reservations(authorization: str | None = Header(default=None)):
-    """List bookings for the verified Supabase account email, without door codes."""
+    """List active payment holds, confirmed bookings, and paid history without door codes."""
     db = create_supabase_client()
     email = _verified_account_email(db, authorization)
     rows = (db.table("pod_reservations")
-            .select("id,pod_id,pod_label,start_at,end_at,duration_minutes,amount_pence,status,hold_expires_at,code_emailed_at")
+            .select("id,pod_id,pod_label,start_at,end_at,duration_minutes,amount_pence,status,hold_expires_at,stripe_payment_intent_id,access_code,code_emailed_at")
             .eq("customer_email", email)
             .order("start_at", desc=True).execute().data)
     now = datetime.now(timezone.utc)
     bookings = []
     for row in rows:
         status = row["status"]
-        if status == "pending" and row.get("hold_expires_at") and datetime.fromisoformat(row["hold_expires_at"]) <= now:
-            status = "expired"
+        active_hold = (status == "pending" and row.get("stripe_payment_intent_id") and
+                       row.get("hold_expires_at") and
+                       datetime.fromisoformat(row["hold_expires_at"]) > now)
+        if not active_hold and status not in ("paid", "confirmed") and not (
+            status in ("cancelled", "refunded") and row.get("access_code")
+        ):
+            continue
         bookings.append({
             "id": row["id"], "pod_id": row["pod_id"], "pod_label": row["pod_label"],
             "start_at": row["start_at"], "end_at": row["end_at"],
             "duration_minutes": row["duration_minutes"], "amount_pence": row["amount_pence"],
-            "status": status, "code_emailed": row.get("code_emailed_at") is not None,
+            "status": status, "hold_expires_at": row.get("hold_expires_at") if active_hold else None,
+            "code_emailed": row.get("code_emailed_at") is not None,
         })
     return {"bookings": bookings}
+
+
+@router.post("/api/reservations/{reservation_id}/resume")
+def resume_reservation_payment(reservation_id: UUID,
+                               authorization: str | None = Header(default=None)):
+    """Return the existing checkout secret only to the verified booking owner."""
+    db = create_supabase_client()
+    email = _verified_account_email(db, authorization)
+    rows = (db.table("pod_reservations")
+            .select("customer_email,status,hold_expires_at,stripe_payment_intent_id,amount_pence")
+            .eq("id", str(reservation_id)).limit(1).execute().data)
+    if not rows or rows[0]["customer_email"].lower() != email:
+        raise HTTPException(404, "Reservation not found")
+    booking = rows[0]
+    if (booking["status"] != "pending" or not booking.get("hold_expires_at") or
+            datetime.fromisoformat(booking["hold_expires_at"]) <= datetime.now(timezone.utc)):
+        raise HTTPException(409, "This payment hold has expired; please choose a time again")
+    payment_id = booking.get("stripe_payment_intent_id")
+    if not payment_id:
+        raise HTTPException(409, "Payment is still being prepared; please try again")
+    payment = create_stripe_client().payment_intents.retrieve(payment_id)
+    if payment.status not in ("requires_payment_method", "requires_confirmation", "requires_action"):
+        raise HTTPException(409, "Payment is already processing; please check the booking status")
+    logger.info("Reservation checkout resumed reservation=%s payment_intent=%s", reservation_id, payment_id)
+    return {"reservation_id": str(reservation_id), "client_secret": payment.client_secret,
+            "amount_pence": booking["amount_pence"], "currency": "gbp",
+            "hold_expires_at": booking["hold_expires_at"]}
 
 
 @router.post("/api/reservations/{reservation_id}/reschedule")
@@ -191,6 +224,7 @@ def create_reservation(body: ReservationRequest):
             "p_customer_phone": body.customer_phone,
             "p_hold_expires_at": (datetime.now(timezone.utc) + timedelta(minutes=HOLD_MINUTES)).isoformat(),
         }).execute().data
+        logger.info("Reservation hold created reservation=%s expires_at=%s", booking["id"], booking["hold_expires_at"])
     except APIError as exc:
         if exc.code == "23P01":
             raise HTTPException(409, "This time is no longer available") from exc
@@ -205,9 +239,12 @@ def create_reservation(body: ReservationRequest):
             "p_reservation_id": booking["id"], "p_payment_intent_id": payment.id,
         }).execute().data
         if not attached:
+            logger.warning("Reservation payment attachment failed reservation=%s payment_intent=%s", booking["id"], payment.id)
             create_stripe_client().payment_intents.cancel(payment.id)
             raise HTTPException(409, "The checkout hold expired; please choose a time again")
+        logger.info("Reservation payment ready reservation=%s payment_intent=%s", booking["id"], payment.id)
     except Exception:
+        logger.exception("Reservation checkout setup failed reservation=%s", booking["id"])
         db.table("pod_reservations").update({"status": "cancelled"}).eq("id", booking["id"]).eq("status", "pending").execute()
         raise
     return {"reservation_id": booking["id"], "amount_pence": amount,
@@ -252,6 +289,8 @@ def process_reservation_stripe_event(event: Event) -> bool:
         "p_reservation_id": str(booking_id), "p_payment_intent_id": payment.id,
         "p_access_code": _code_from_pool(),
     }).execute().data
+    logger.info("Reservation payment webhook reservation=%s payment_intent=%s booking_status=%s outcome=%s",
+                booking_id, payment.id, booking.get("status"), outcome)
     if outcome == "expired":
         create_stripe_client().refunds.create(
             params={"payment_intent": payment.id, "reason": "requested_by_customer"},

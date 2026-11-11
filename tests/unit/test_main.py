@@ -65,6 +65,17 @@ _SESSION_ROW = {
 }
 
 
+def test_finalize_reports_unconfirmed_setup_intent_as_conflict(client):
+    stripe = patch("svc.main.create_stripe_client")
+    with stripe as stripe_client, patch("svc.main.create_supabase_client"):
+        stripe_client.return_value.setup_intents.retrieve.return_value.status = "requires_confirmation"
+        response = client.post(
+            "/api/booking/finalize",
+            headers={"Authorization": f"Bearer {_provisioning_jwt()}"},
+        )
+    assert response.status_code == 409
+
+
 # ---------------------------------------------------------------------------
 # GET /api/pod
 # ---------------------------------------------------------------------------

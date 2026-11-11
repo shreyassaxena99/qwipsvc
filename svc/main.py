@@ -177,10 +177,10 @@ def finalize_booking_request(
     background_tasks: BackgroundTasks, token: str = Depends(get_token)
 ) -> FinalizeBookingResponse:
     try:
-        payload = verify_jwt_token(
-            token, TokenScope.PROVISIONING
-        )  # return the data INSIDE the token and scope
-        logging.info(f"Token verified, payload: {payload}")
+        try:
+            payload = verify_jwt_token(token, TokenScope.PROVISIONING)
+        except ValueError as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
         stripe = create_stripe_client()
         supabase = create_supabase_client()
         setup_intent_metadata = stripe.setup_intents.retrieve(
@@ -265,8 +265,11 @@ def finalize_booking_request(
 
         background_tasks.add_task(provision_access_code_job, session_metadata)
         return FinalizeBookingResponse(session_jwt_token=session_jwt_token)
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+        logger.exception("Failed to finalize walk-up booking")
+        raise HTTPException(status_code=500, detail="Failed to finalize booking") from e
 
 
 @app.get("/api/provisioning-status")

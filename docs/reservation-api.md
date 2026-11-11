@@ -26,7 +26,8 @@ Back up the table first. The migration changes live security and messaging behav
 | `GET /api/reservations/availability?pod_id=...&day=YYYY-MM-DD` | Start times and allowed durations for one London date. |
 | `POST /api/reservations` | Creates a held booking and Stripe PaymentIntent. Returns the booking ID, client secret, amount, and hold expiry. |
 | `GET /api/reservations/{id}/status` | Returns status and whether the code email was sent. Never returns the code. |
-| `GET /api/reservations/me` | Requires a Supabase access token. Lists bookings for the verified account email without access codes. |
+| `GET /api/reservations/me` | Requires a Supabase access token. Lists active payment holds and confirmed booking history for the verified account email without access codes. |
+| `POST /api/reservations/{id}/resume` | Requires a Supabase access token. Returns the existing PaymentIntent client secret only to the owner while the hold is active. |
 | `POST /api/reservations/{id}/reschedule` | Requires a Supabase access token. Moves the account's paid booking to another time at the same pod and duration. |
 | `POST /webhook/stripe` | Existing signed Stripe webhook. `payment_intent.succeeded` events for reservations confirm a booking or refund a payment arriving after hold expiry. |
 
@@ -36,6 +37,13 @@ The server enforces one-hour notice, a 21-day booking window, 15-minute starts a
 one to four hours, a 10 PM London finish, blocked dates, and £15/hour.
 The browser cannot set the price or mark a booking paid.
 Email retry is handled by the backend worker. Browser code has no delivery controls.
+
+`GET /api/reservations/me` returns active checkout holds, confirmed bookings, and
+paid booking history for the verified account email. Expired or abandoned holds
+are hidden. An active hold can be completed through `POST /api/reservations/{id}/resume`;
+the original 10-minute deadline still applies. The resume endpoint returns a
+client secret only after checking the verified account email and Stripe payment
+state. Access codes remain server-side.
 
 ## Rescheduling
 

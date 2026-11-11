@@ -81,6 +81,40 @@ def test_my_bookings_use_verified_email_and_never_return_codes():
     assert "stripe_payment_intent_id" not in booking
 
 
+def test_my_bookings_show_only_active_holds_and_confirmed_history():
+    db = MagicMock()
+    db.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(
+        email="ada@example.com", email_confirmed_at="2026-11-01T00:00:00Z"))
+    base = {
+        "pod_id": "pod-1", "pod_label": "Westfield",
+        "start_at": "2026-11-11T12:00:00+00:00", "end_at": "2026-11-11T13:00:00+00:00",
+        "duration_minutes": 60, "amount_pence": 1500, "code_emailed_at": None,
+    }
+    db.table.return_value.select.return_value.eq.return_value.order.return_value.execute.return_value.data = [
+        {**base, "id": "hold", "status": "pending", "access_code": None,
+         "stripe_payment_intent_id": "pi_hold",
+         "hold_expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()},
+        {**base, "id": "expired", "status": "pending", "access_code": None,
+         "stripe_payment_intent_id": "pi_expired",
+         "hold_expires_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()},
+        {**base, "id": "preparing", "status": "pending", "access_code": None,
+         "stripe_payment_intent_id": None,
+         "hold_expires_at": (datetime.now(timezone.utc) + timedelta(minutes=5)).isoformat()},
+        {**base, "id": "abandoned", "status": "cancelled", "access_code": None},
+        {**base, "id": "paid", "status": "paid", "access_code": "12345"},
+        {**base, "id": "paid-cancelled", "status": "cancelled", "access_code": "54321"},
+    ]
+    with patch("svc.reservation_api.create_supabase_client", return_value=db):
+        response = TestClient(app).get("/api/reservations/me",
+                                       headers={"Authorization": "Bearer valid-token"})
+    assert response.status_code == 200
+    bookings = response.json()["bookings"]
+    assert [booking["id"] for booking in bookings] == ["hold", "paid", "paid-cancelled"]
+    assert bookings[0]["hold_expires_at"] is not None
+    assert all("access_code" not in booking for booking in bookings)
+    assert all("stripe_payment_intent_id" not in booking for booking in bookings)
+
+
 def test_my_bookings_rejects_invalid_token():
     db = MagicMock()
     db.auth.get_user.side_effect = ValueError("invalid token")
@@ -89,6 +123,59 @@ def test_my_bookings_rejects_invalid_token():
                                        headers={"Authorization": "Bearer invalid-token"})
     assert response.status_code == 401
     db.table.assert_not_called()
+
+
+def _resume_db(email="ada@example.com", expires_in_minutes=5, status="pending"):
+    db = MagicMock()
+    db.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(
+        email="ada@example.com", email_confirmed_at="2026-11-01T00:00:00Z"))
+    db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [{
+        "customer_email": email, "status": status,
+        "hold_expires_at": (datetime.now(timezone.utc) + timedelta(minutes=expires_in_minutes)).isoformat(),
+        "stripe_payment_intent_id": "pi_test", "amount_pence": 1500,
+    }]
+    return db
+
+
+def test_resume_payment_requires_verified_owner_and_active_hold():
+    path = "/api/reservations/00000000-0000-0000-0000-000000000001/resume"
+    assert TestClient(app).post(path).status_code == 401
+    for db, expected in [(_resume_db(email="other@example.com"), 404),
+                         (_resume_db(expires_in_minutes=-1), 409),
+                         (_resume_db(status="paid"), 409)]:
+        with patch("svc.reservation_api.create_supabase_client", return_value=db):
+            response = TestClient(app).post(path, headers={"Authorization": "Bearer valid-token"})
+        assert response.status_code == expected
+
+
+def test_resume_payment_returns_existing_intent_to_owner_without_code():
+    db = _resume_db()
+    stripe = MagicMock()
+    stripe.payment_intents.retrieve.return_value = SimpleNamespace(
+        status="requires_payment_method", client_secret="pi_test_secret_example")
+    with (patch("svc.reservation_api.create_supabase_client", return_value=db),
+          patch("svc.reservation_api.create_stripe_client", return_value=stripe)):
+        response = TestClient(app).post(
+            "/api/reservations/00000000-0000-0000-0000-000000000001/resume",
+            headers={"Authorization": "Bearer valid-token"})
+    assert response.status_code == 200
+    assert response.json()["client_secret"] == "pi_test_secret_example"
+    assert "access_code" not in response.json()
+    stripe.payment_intents.retrieve.assert_called_once_with("pi_test")
+
+
+def test_resume_payment_rejects_intent_already_processing():
+    db = _resume_db()
+    stripe = MagicMock()
+    stripe.payment_intents.retrieve.return_value = SimpleNamespace(
+        status="processing", client_secret="pi_test_secret_example")
+    with (patch("svc.reservation_api.create_supabase_client", return_value=db),
+          patch("svc.reservation_api.create_stripe_client", return_value=stripe)):
+        response = TestClient(app).post(
+            "/api/reservations/00000000-0000-0000-0000-000000000001/resume",
+            headers={"Authorization": "Bearer valid-token"})
+    assert response.status_code == 409
+    assert "client_secret" not in response.json()
 
 
 def _reschedule_db(email="ada@example.com", status="paid"):
