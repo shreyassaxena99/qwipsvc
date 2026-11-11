@@ -15,7 +15,7 @@ from stripe import Event
 from svc.database_accessor import create_supabase_client, get_pod_by_id
 from svc.payments_manager import create_stripe_client
 from svc.reservation_delivery import dispatch_reservation_deliveries
-from svc.reservation_rules import LONDON, reservation_window
+from svc.reservation_rules import APP_TEST_PRICE_PENCE_PER_HOUR, PRICE_PENCE_PER_HOUR, LONDON, reservation_window
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -59,6 +59,17 @@ def _active_overlaps(pod_id: str, start: datetime, end: datetime) -> list[dict]:
 
 @router.get("/api/reservations/availability")
 def availability(pod_id: str, day: date):
+    return _availability(pod_id, day)
+
+
+@router.get("/api/app-reservations/availability")
+def app_availability(pod_id: str, day: date,
+                     authorization: str | None = Header(default=None)):
+    _verified_account_email(create_supabase_client(), authorization)
+    return _availability(pod_id, day, APP_TEST_PRICE_PENCE_PER_HOUR)
+
+
+def _availability(pod_id: str, day: date, price_pence_per_hour: int = PRICE_PENCE_PER_HOUR):
     get_pod_by_id(create_supabase_client(), pod_id)
     now = datetime.now(timezone.utc)
     local_today = now.astimezone(LONDON).date()
@@ -76,7 +87,8 @@ def availability(pod_id: str, day: date):
         durations = []
         for duration in range(60, 241, 15):
             try:
-                _, end, amount = reservation_window(start, duration, now)
+                _, end, amount = reservation_window(start, duration, now,
+                                                    price_pence_per_hour=price_pence_per_hour)
             except HTTPException:
                 continue
             if any(start < datetime.fromisoformat(row["end_at"]) and
@@ -205,14 +217,30 @@ def reschedule_reservation(reservation_id: UUID, body: RescheduleRequest,
 
 @router.post("/api/reservations", status_code=201)
 def create_reservation(body: ReservationRequest):
-    start, end, amount = reservation_window(body.start_at, body.duration_minutes)
+    return _create_reservation(body)
+
+
+@router.post("/api/app-reservations", status_code=201)
+def create_app_reservation(body: ReservationRequest,
+                           authorization: str | None = Header(default=None)):
+    db = create_supabase_client()
+    email = _verified_account_email(db, authorization)
+    if str(body.customer_email).lower() != email:
+        raise HTTPException(403, "Reservation email must match your account")
+    return _create_reservation(body, APP_TEST_PRICE_PENCE_PER_HOUR, db)
+
+
+def _create_reservation(body: ReservationRequest, price_pence_per_hour: int = PRICE_PENCE_PER_HOUR,
+                        db=None):
+    start, end, amount = reservation_window(body.start_at, body.duration_minutes,
+                                             price_pence_per_hour=price_pence_per_hour)
     if not body.customer_name.strip():
         raise HTTPException(422, "Customer name is required")
     if _blocked(start.astimezone(LONDON).date()):
         raise HTTPException(422, "This date is unavailable")
     if body.customer_phone and (not body.customer_phone.startswith("+") or not body.customer_phone[1:].isdigit()):
         raise HTTPException(422, "Phone number must be in international format")
-    db = create_supabase_client()
+    db = db or create_supabase_client()
     pod = get_pod_by_id(db, body.pod_id)
     try:
         booking = db.rpc("create_pod_reservation", {

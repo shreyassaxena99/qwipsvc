@@ -19,6 +19,15 @@ def test_reservation_price_and_window():
     assert amount == 1875
 
 
+@pytest.mark.parametrize(("minutes", "pence"), [
+    (60, 50), (75, 63), (90, 75), (105, 88), (240, 200),
+])
+def test_app_reservation_price_rounds_to_nearest_penny(minutes, pence):
+    now = datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)
+    start = datetime(2026, 11, 10, 10, 0, tzinfo=timezone.utc)
+    assert reservation_window(start, minutes, now, price_pence_per_hour=50)[2] == pence
+
+
 @pytest.mark.parametrize("duration", [45, 61, 255])
 def test_invalid_reservation_duration(duration):
     now = datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)
@@ -260,9 +269,14 @@ def test_worker_requires_private_token():
     assert response.status_code == 401
 
 
-def test_checkout_amount_is_calculated_on_server():
+@pytest.mark.parametrize(("path", "expected_pence"), [
+    ("/api/reservations", 1875), ("/api/app-reservations", 63),
+])
+def test_checkout_amount_is_calculated_on_server(path, expected_pence):
     start = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
     db = MagicMock()
+    db.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(
+        email="test@example.com", email_confirmed_at="2026-11-01T00:00:00Z"))
     db.rpc.return_value.execute.side_effect = [
         SimpleNamespace(data={"id": "00000000-0000-0000-0000-000000000001", "hold_expires_at": "2026-11-10T12:10:00+00:00"}),
         SimpleNamespace(data=True),
@@ -272,14 +286,52 @@ def test_checkout_amount_is_calculated_on_server():
     with (patch("svc.reservation_api.create_supabase_client", return_value=db),
           patch("svc.reservation_api.get_pod_by_id", return_value={"name": "Westfield London"}),
           patch("svc.reservation_api.create_stripe_client", return_value=stripe)):
-        response = TestClient(app).post("/api/reservations", json={
+        response = TestClient(app).post(path, json={
             "pod_id": "pod_1", "start_at": start.isoformat(), "duration_minutes": 75,
             "customer_name": "Test User", "customer_email": "test@example.com",
-        })
+        }, headers={"Authorization": "Bearer valid-token"})
     assert response.status_code == 201
-    assert response.json()["amount_pence"] == 1875
-    assert stripe.payment_intents.create.call_args.kwargs["params"]["amount"] == 1875
+    assert response.json()["amount_pence"] == expected_pence
+    assert stripe.payment_intents.create.call_args.kwargs["params"]["amount"] == expected_pence
     assert "access_code" not in response.json()
+
+
+def test_app_checkout_requires_verified_matching_email():
+    path = "/api/app-reservations"
+    start = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
+    body = {"pod_id": "pod_1", "start_at": start.isoformat(), "duration_minutes": 60,
+            "customer_name": "Test User", "customer_email": "other@example.com"}
+    assert TestClient(app).post(path, json=body).status_code == 401
+    db = MagicMock()
+    db.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(
+        email="test@example.com", email_confirmed_at="2026-11-01T00:00:00Z"))
+    with patch("svc.reservation_api.create_supabase_client", return_value=db):
+        response = TestClient(app).post(path, json=body,
+                                        headers={"Authorization": "Bearer valid-token"})
+    assert response.status_code == 403
+    db.rpc.assert_not_called()
+
+
+def test_app_availability_uses_test_price_without_changing_website_price():
+    day = (datetime.now(timezone.utc) + timedelta(days=2)).date().isoformat()
+    db = MagicMock()
+    db.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(
+        email="test@example.com", email_confirmed_at="2026-11-01T00:00:00Z"))
+    with (patch("svc.reservation_api.create_supabase_client", return_value=db),
+          patch("svc.reservation_api.get_pod_by_id", return_value={"name": "Westfield"}),
+          patch("svc.reservation_api._active_overlaps", return_value=[])):
+        website = TestClient(app).get("/api/reservations/availability",
+                                       params={"pod_id": "pod_1", "day": day})
+        app_response = TestClient(app).get("/api/app-reservations/availability",
+                                            params={"pod_id": "pod_1", "day": day},
+                                            headers={"Authorization": "Bearer valid-token"})
+    assert website.status_code == app_response.status_code == 200
+    website_hour = next(duration for slot in website.json()["slots"]
+                        for duration in slot["durations"] if duration["minutes"] == 60)
+    app_hour = next(duration for slot in app_response.json()["slots"]
+                    for duration in slot["durations"] if duration["minutes"] == 60)
+    assert website_hour["amount_pence"] == 1500
+    assert app_hour["amount_pence"] == 50
 
 
 def test_signed_payment_webhook_confirms_matching_booking():

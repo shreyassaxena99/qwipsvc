@@ -7,10 +7,12 @@ from fastapi import HTTPException
 
 LONDON = ZoneInfo("Europe/London")
 PRICE_PENCE_PER_HOUR = 1500
+APP_TEST_PRICE_PENCE_PER_HOUR = 50
 MAX_DAYS_AHEAD = 21
 
 
-def reservation_window(start_at: datetime, duration_minutes: int, now: datetime | None = None) -> tuple[datetime, datetime, int]:
+def reservation_window(start_at: datetime, duration_minutes: int, now: datetime | None = None,
+                       price_pence_per_hour: int = PRICE_PENCE_PER_HOUR) -> tuple[datetime, datetime, int]:
     if start_at.tzinfo is None:
         raise HTTPException(422, "start_at must include a timezone")
     if duration_minutes < 60 or duration_minutes > 240 or duration_minutes % 15:
@@ -28,4 +30,5 @@ def reservation_window(start_at: datetime, duration_minutes: int, now: datetime 
         raise HTTPException(422, "Bookings must finish by 10 PM London time")
     if local_start.minute % 15 or local_start.second or local_start.microsecond:
         raise HTTPException(422, "Start time must be on a 15-minute boundary")
-    return start, end, duration_minutes * PRICE_PENCE_PER_HOUR // 60
+    # Round half-pence up so quarter-hour app test bookings have a whole-penny price.
+    return start, end, (duration_minutes * price_pence_per_hour + 30) // 60
