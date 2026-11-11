@@ -127,7 +127,7 @@ def my_reservations(authorization: str | None = Header(default=None)):
     db = create_supabase_client()
     email = _verified_account_email(db, authorization)
     rows = (db.table("pod_reservations")
-            .select("id,pod_id,pod_label,start_at,end_at,duration_minutes,amount_pence,status,hold_expires_at,stripe_payment_intent_id,access_code,code_emailed_at")
+            .select("id,pod_id,pod_label,start_at,end_at,duration_minutes,amount_pence,status,hold_expires_at,stripe_payment_intent_id,access_code,code_emailed_at,customer_cancel_requested_at,stripe_refund_status")
             .eq("customer_email", email)
             .order("start_at", desc=True).execute().data)
     now = datetime.now(timezone.utc)
@@ -147,6 +147,8 @@ def my_reservations(authorization: str | None = Header(default=None)):
             "duration_minutes": row["duration_minutes"], "amount_pence": row["amount_pence"],
             "status": status, "hold_expires_at": row.get("hold_expires_at") if active_hold else None,
             "code_emailed": row.get("code_emailed_at") is not None,
+            "customer_cancel_requested_at": row.get("customer_cancel_requested_at"),
+            "refund_status": row.get("stripe_refund_status"),
         })
     return {"bookings": bookings}
 
@@ -213,6 +215,62 @@ def reschedule_reservation(reservation_id: UUID, body: RescheduleRequest,
         raise HTTPException(409, "This booking can no longer be changed")
     return {"status": "rescheduled", "reservation_id": str(reservation_id),
             "start_at": start, "end_at": end}
+
+
+@router.post("/api/reservations/{reservation_id}/cancel")
+def cancel_customer_reservation(reservation_id: UUID,
+                                authorization: str | None = Header(default=None)):
+    """Cancel the verified customer's paid booking and request its full Stripe refund."""
+    db = create_supabase_client()
+    email = _verified_account_email(db, authorization)
+    outcome = db.rpc("request_customer_cancel_pod_reservation", {
+        "p_reservation_id": str(reservation_id), "p_customer_email": email,
+    }).execute().data
+    if outcome == "not_found":
+        raise HTTPException(404, "Reservation not found")
+    if outcome not in ("cancelled", "already_requested"):
+        raise HTTPException(409, "This booking can only be cancelled until one hour before it starts")
+
+    rows = (db.table("pod_reservations")
+            .select("stripe_payment_intent_id,stripe_refund_id,amount_pence")
+            .eq("id", str(reservation_id)).limit(1).execute().data)
+    if not rows or not rows[0].get("stripe_payment_intent_id"):
+        logger.error("Customer cancellation missing payment reservation=%s", reservation_id)
+        raise HTTPException(503, "Booking cancelled, but its refund needs support review")
+    booking = rows[0]
+    stripe = create_stripe_client()
+    try:
+        if booking.get("stripe_refund_id"):
+            refund = stripe.refunds.retrieve(booking["stripe_refund_id"])
+        else:
+            existing = stripe.refunds.list(params={
+                "payment_intent": booking["stripe_payment_intent_id"], "limit": 100,
+            }).data
+            refund = next((item for item in existing
+                           if (item.metadata or {}).get("customer_cancel_reservation_id") == str(reservation_id)), None)
+            if refund is None:
+                if any(item.status in ("pending", "requires_action", "succeeded") for item in existing):
+                    raise HTTPException(409, "This payment already has a refund; contact support")
+                refund = stripe.refunds.create(
+                    params={
+                        "payment_intent": booking["stripe_payment_intent_id"],
+                        "reason": "requested_by_customer",
+                        "metadata": {"customer_cancel_reservation_id": str(reservation_id)},
+                    },
+                    options={"idempotency_key": f"customer-reservation-cancel-{reservation_id}"},
+                )
+        db.table("pod_reservations").update({
+            "stripe_refund_id": refund.id, "stripe_refund_status": refund.status,
+        }).eq("id", str(reservation_id)).eq("status", "cancelled").execute()
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Customer reservation refund needs retry reservation=%s", reservation_id)
+        raise HTTPException(503, "Booking cancelled, but the refund could not be confirmed. Please retry from My Bookings") from exc
+    logger.info("Customer reservation cancelled reservation=%s refund=%s status=%s",
+                reservation_id, refund.id, refund.status)
+    return {"status": "cancelled", "refund_status": refund.status,
+            "refund_issued": refund.status in ("pending", "requires_action", "succeeded")}
 
 
 @router.post("/api/reservations", status_code=201)

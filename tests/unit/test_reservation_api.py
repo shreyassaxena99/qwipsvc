@@ -264,6 +264,80 @@ def test_reschedule_rejects_unpaid_booking():
     db.rpc.assert_not_called()
 
 
+def _cancel_db(outcome="cancelled", refund_id=None):
+    db = MagicMock()
+    db.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(
+        email="ada@example.com", email_confirmed_at="2026-11-01T00:00:00Z"))
+    db.rpc.return_value.execute.return_value.data = outcome
+    db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [{
+        "stripe_payment_intent_id": "pi_test", "stripe_refund_id": refund_id,
+        "amount_pence": 50,
+    }]
+    return db
+
+
+def test_customer_cancel_requires_verified_account_and_eligible_booking():
+    path = "/api/reservations/00000000-0000-0000-0000-000000000001/cancel"
+    assert TestClient(app).post(path).status_code == 401
+    for outcome, expected in [("not_found", 404), ("ineligible", 409)]:
+        db = _cancel_db(outcome)
+        with patch("svc.reservation_api.create_supabase_client", return_value=db):
+            response = TestClient(app).post(path, headers={"Authorization": "Bearer valid-token"})
+        assert response.status_code == expected
+        assert db.rpc.call_args.args[0] == "request_customer_cancel_pod_reservation"
+        assert db.rpc.call_args.args[1]["p_customer_email"] == "ada@example.com"
+
+
+def test_customer_cancel_creates_one_full_refund_and_records_it():
+    db = _cancel_db()
+    stripe = MagicMock()
+    stripe.refunds.list.return_value.data = []
+    stripe.refunds.create.return_value = SimpleNamespace(id="re_test", status="pending")
+    path = "/api/reservations/00000000-0000-0000-0000-000000000001/cancel"
+    with (patch("svc.reservation_api.create_supabase_client", return_value=db),
+          patch("svc.reservation_api.create_stripe_client", return_value=stripe)):
+        response = TestClient(app).post(path, headers={"Authorization": "Bearer valid-token"})
+    assert response.status_code == 200
+    assert response.json() == {"status": "cancelled", "refund_status": "pending", "refund_issued": True}
+    kwargs = stripe.refunds.create.call_args.kwargs
+    assert kwargs["params"]["payment_intent"] == "pi_test"
+    assert "amount" not in kwargs["params"]
+    assert kwargs["options"]["idempotency_key"] == "customer-reservation-cancel-00000000-0000-0000-0000-000000000001"
+    db.table.return_value.update.assert_called_once_with({
+        "stripe_refund_id": "re_test", "stripe_refund_status": "pending",
+    })
+
+
+def test_customer_cancel_retry_reuses_existing_refund():
+    db = _cancel_db("already_requested", refund_id="re_test")
+    stripe = MagicMock()
+    stripe.refunds.retrieve.return_value = SimpleNamespace(id="re_test", status="succeeded")
+    with (patch("svc.reservation_api.create_supabase_client", return_value=db),
+          patch("svc.reservation_api.create_stripe_client", return_value=stripe)):
+        response = TestClient(app).post(
+            "/api/reservations/00000000-0000-0000-0000-000000000001/cancel",
+            headers={"Authorization": "Bearer valid-token"})
+    assert response.status_code == 200
+    assert response.json()["refund_status"] == "succeeded"
+    stripe.refunds.create.assert_not_called()
+
+
+def test_customer_cancel_recovers_refund_after_database_write_failure():
+    db = _cancel_db("already_requested")
+    stripe = MagicMock()
+    stripe.refunds.list.return_value.data = [SimpleNamespace(
+        id="re_test", status="pending",
+        metadata={"customer_cancel_reservation_id": "00000000-0000-0000-0000-000000000001"})]
+    with (patch("svc.reservation_api.create_supabase_client", return_value=db),
+          patch("svc.reservation_api.create_stripe_client", return_value=stripe)):
+        response = TestClient(app).post(
+            "/api/reservations/00000000-0000-0000-0000-000000000001/cancel",
+            headers={"Authorization": "Bearer valid-token"})
+    assert response.status_code == 200
+    stripe.refunds.create.assert_not_called()
+    db.table.return_value.update.assert_called_once()
+
+
 def test_worker_requires_private_token():
     response = TestClient(app).post("/internal/reservations/dispatch")
     assert response.status_code == 401

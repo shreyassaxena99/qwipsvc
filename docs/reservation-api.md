@@ -31,6 +31,7 @@ Back up the table first. The migration changes live security and messaging behav
 | `GET /api/reservations/me` | Requires a Supabase access token. Lists active payment holds and confirmed booking history for the verified account email without access codes. |
 | `POST /api/reservations/{id}/resume` | Requires a Supabase access token. Returns the existing PaymentIntent client secret only to the owner while the hold is active. |
 | `POST /api/reservations/{id}/reschedule` | Requires a Supabase access token. Moves the account's paid booking to another time at the same pod and duration. |
+| `POST /api/reservations/{id}/cancel` | Requires a Supabase access token. Cancels the account's paid booking until one hour before start and requests a full Stripe refund. |
 | `POST /webhook/stripe` | Existing signed Stripe webhook. `payment_intent.succeeded` events for reservations confirm a booking or refund a payment arriving after hold expiry. |
 
 `POST /api/reservations` accepts `pod_id`, an ISO 8601 `start_at` with timezone,
@@ -71,6 +72,27 @@ Rescheduling requeues the confirmation email with the new time and updates the e
 reminder's due time. Any booking WhatsApp still queued for the old time is cancelled;
 an already sent WhatsApp cannot be retracted. The updated email is the authoritative
 notice. Cancellation and refunds are separate and are not exposed by this endpoint.
+
+## Customer cancellation and refund
+
+Apply `migrations/20261111_customer_reservation_cancellation.sql` before deploying
+this endpoint. It records the customer cancellation request and Stripe refund state.
+The database function checks the verified account email, paid status, Stripe payment
+reference, and one-hour cutoff while locking the booking row. It also cancels queued
+delivery jobs and releases the slot immediately.
+
+Send `POST /api/reservations/{id}/cancel` with the account's Supabase bearer token.
+For an eligible booking, the server creates a full refund against the original Stripe
+PaymentIntent and returns `status`, `refund_status`, and `refund_issued`. Refund
+settlement can take longer than the API response. A repeated call reuses the same
+refund, including after a lost database response. If Stripe is unavailable, the
+booking remains cancelled; the app offers a retry from My Bookings. A failed Stripe
+refund needs support review. `GET /api/reservations/me` includes the cancellation
+request timestamp and last recorded refund status so the app can show that state.
+
+The website's booking and pricing endpoints are unchanged. This cancellation endpoint
+is also available to a verified website account using the same reservation email.
+Cancelling a booking does not revoke a static physical access code already sent.
 
 ## Private endpoints
 

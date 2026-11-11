@@ -57,6 +57,7 @@ The scheduled reservation API is implemented in this repository, but its [databa
 | `GET` | `/api/reservations/{id}/status` | Public | Booking status and whether the code email was sent; never the code. |
 | `GET` | `/api/reservations/me` | Verified Supabase account | Active checkout holds and confirmed booking history; excludes expired holds. |
 | `POST` | `/api/reservations/{id}/resume` | Verified Supabase account | Resume the owner's unexpired checkout with its existing Stripe PaymentIntent. |
+| `POST` | `/api/reservations/{id}/cancel` | Verified Supabase account | Cancel a paid booking more than one hour before start and request a full Stripe refund. Requires the [customer cancellation migration](migrations/20261111_customer_reservation_cancellation.sql). |
 | `POST` | `/webhook/stripe` | Stripe signature | Confirm a paid reservation from `payment_intent.succeeded`. |
 | `POST` | `/internal/reservations/dispatch` | Worker bearer token | Expire holds and send due email jobs. |
 | `POST` | `/internal/reservations/whatsapp/claim` | Lovable bearer token | Lease due WhatsApp jobs to the Lovable server function. |
