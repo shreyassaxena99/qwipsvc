@@ -8,7 +8,7 @@ from starlette.testclient import TestClient
 
 from svc.main import app
 from svc.reservation_api import _whatsapp_job_payload
-from svc.reservation_rules import reservation_window
+from svc.reservation_rules import TEST_POD_ID, reservation_window
 
 
 def test_reservation_price_and_window():
@@ -22,7 +22,7 @@ def test_reservation_price_and_window():
 @pytest.mark.parametrize(("minutes", "pence"), [
     (60, 50), (75, 63), (90, 75), (105, 88), (240, 200),
 ])
-def test_app_reservation_price_rounds_to_nearest_penny(minutes, pence):
+def test_test_pod_price_rounds_to_nearest_penny(minutes, pence):
     now = datetime(2026, 11, 9, 12, 0, tzinfo=timezone.utc)
     start = datetime(2026, 11, 10, 10, 0, tzinfo=timezone.utc)
     assert reservation_window(start, minutes, now, price_pence_per_hour=50)[2] == pence
@@ -53,13 +53,22 @@ def test_public_status_never_returns_access_code():
 def test_pod_catalogue_exposes_only_booking_display_fields():
     db = MagicMock()
     db.table.return_value.select.return_value.order.return_value.execute.return_value.data = [
-        {"id": "pod_1", "name": "Westfield", "address": "London"}
+        {"id": "pod_1", "name": "Westfield", "address": "London"},
+        {"id": TEST_POD_ID, "name": "Test Pod", "address": "Test address"},
     ]
     with patch("svc.reservation_api.create_supabase_client", return_value=db):
         response = TestClient(app).get("/api/reservations/pods")
+        app_unauthenticated = TestClient(app).get("/api/app-reservations/pods")
+        db.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(
+            email="test@example.com", email_confirmed_at="2026-11-01T00:00:00Z"))
+        app_response = TestClient(app).get("/api/app-reservations/pods",
+                                           headers={"Authorization": "Bearer valid-token"})
     assert response.status_code == 200
     assert response.json() == {"pods": [{"id": "pod_1", "name": "Westfield", "address": "London"}]}
-    db.table.return_value.select.assert_called_once_with("id,name,address")
+    assert app_unauthenticated.status_code == 401
+    assert app_response.status_code == 200
+    assert len(app_response.json()["pods"]) == 2
+    db.table.return_value.select.assert_any_call("id,name,address")
 
 
 def test_my_bookings_requires_authentication():
@@ -343,10 +352,12 @@ def test_worker_requires_private_token():
     assert response.status_code == 401
 
 
-@pytest.mark.parametrize(("path", "expected_pence"), [
-    ("/api/reservations", 1875), ("/api/app-reservations", 63),
+@pytest.mark.parametrize(("path", "pod_id", "expected_pence"), [
+    ("/api/reservations", "pod_1", 1875),
+    ("/api/app-reservations", "pod_1", 1875),
+    ("/api/app-reservations", TEST_POD_ID, 63),
 ])
-def test_checkout_amount_is_calculated_on_server(path, expected_pence):
+def test_checkout_amount_is_calculated_on_server(path, pod_id, expected_pence):
     start = (datetime.now(timezone.utc) + timedelta(days=1)).replace(hour=12, minute=0, second=0, microsecond=0)
     db = MagicMock()
     db.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(
@@ -361,7 +372,7 @@ def test_checkout_amount_is_calculated_on_server(path, expected_pence):
           patch("svc.reservation_api.get_pod_by_id", return_value={"name": "Westfield London"}),
           patch("svc.reservation_api.create_stripe_client", return_value=stripe)):
         response = TestClient(app).post(path, json={
-            "pod_id": "pod_1", "start_at": start.isoformat(), "duration_minutes": 75,
+            "pod_id": pod_id, "start_at": start.isoformat(), "duration_minutes": 75,
             "customer_name": "Test User", "customer_email": "test@example.com",
         }, headers={"Authorization": "Bearer valid-token"})
     assert response.status_code == 201
@@ -386,7 +397,7 @@ def test_app_checkout_requires_verified_matching_email():
     db.rpc.assert_not_called()
 
 
-def test_app_availability_uses_test_price_without_changing_website_price():
+def test_availability_uses_pod_price_for_both_app_and_website():
     day = (datetime.now(timezone.utc) + timedelta(days=2)).date().isoformat()
     db = MagicMock()
     db.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(
@@ -405,7 +416,32 @@ def test_app_availability_uses_test_price_without_changing_website_price():
     app_hour = next(duration for slot in app_response.json()["slots"]
                     for duration in slot["durations"] if duration["minutes"] == 60)
     assert website_hour["amount_pence"] == 1500
-    assert app_hour["amount_pence"] == 50
+    assert app_hour["amount_pence"] == 1500
+
+    with (patch("svc.reservation_api.create_supabase_client", return_value=db),
+          patch("svc.reservation_api.get_pod_by_id", return_value={"name": "Test Pod"}),
+          patch("svc.reservation_api._active_overlaps", return_value=[])):
+        test_pod_public = TestClient(app).get("/api/reservations/availability",
+                                              params={"pod_id": TEST_POD_ID, "day": day})
+        test_pod_app = TestClient(app).get("/api/app-reservations/availability",
+                                           params={"pod_id": TEST_POD_ID, "day": day},
+                                           headers={"Authorization": "Bearer valid-token"})
+    assert test_pod_public.status_code == 404
+    test_hour = next(duration for slot in test_pod_app.json()["slots"]
+                     for duration in slot["durations"] if duration["minutes"] == 60)
+    assert test_hour["amount_pence"] == 50
+
+
+def test_public_checkout_cannot_book_test_pod():
+    start = (datetime.now(timezone.utc) + timedelta(days=1)).replace(
+        hour=12, minute=0, second=0, microsecond=0)
+    with patch("svc.reservation_api.create_supabase_client") as db:
+        response = TestClient(app).post("/api/reservations", json={
+            "pod_id": TEST_POD_ID, "start_at": start.isoformat(), "duration_minutes": 60,
+            "customer_name": "Test User", "customer_email": "test@example.com",
+        })
+    assert response.status_code == 404
+    db.assert_not_called()
 
 
 def test_signed_payment_webhook_confirms_matching_booking():

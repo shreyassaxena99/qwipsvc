@@ -22,11 +22,12 @@ Back up the table first. The migration changes live security and messaging behav
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /api/reservations/pods` | Public list of bookable pod IDs, names, and addresses for app selection. |
+| `GET /api/reservations/pods` | Public list of bookable pod IDs, names, and addresses; excludes the Test Pod. |
 | `GET /api/reservations/availability?pod_id=...&day=YYYY-MM-DD` | Start times and allowed durations for one London date. |
 | `POST /api/reservations` | Creates a held booking and Stripe PaymentIntent. Returns the booking ID, client secret, amount, and hold expiry. |
-| `GET /api/app-reservations/availability?pod_id=...&day=YYYY-MM-DD` | Requires a verified Supabase account. App slots use the temporary 50p/hour test rate. |
-| `POST /api/app-reservations` | Requires a verified Supabase account and matching booking email. Creates an app hold and PaymentIntent at the app test rate. |
+| `GET /api/app-reservations/pods` | Requires a verified Supabase account. Includes the Test Pod for app testing. |
+| `GET /api/app-reservations/availability?pod_id=...&day=YYYY-MM-DD` | Requires a verified Supabase account. Slots use the selected pod's price. |
+| `POST /api/app-reservations` | Requires a verified Supabase account and matching booking email. Creates an app hold and PaymentIntent at the selected pod's price. |
 | `GET /api/reservations/{id}/status` | Returns status and whether the code email was sent. Never returns the code. |
 | `GET /api/reservations/me` | Requires a Supabase access token. Lists active payment holds and confirmed booking history for the verified account email without access codes. |
 | `POST /api/reservations/{id}/resume` | Requires a Supabase access token. Returns the existing PaymentIntent client secret only to the owner while the hold is active. |
@@ -37,9 +38,11 @@ Back up the table first. The migration changes live security and messaging behav
 `POST /api/reservations` accepts `pod_id`, an ISO 8601 `start_at` with timezone,
 `duration_minutes`, `customer_name`, `customer_email`, and optional international-format `customer_phone`.
 The server enforces one-hour notice, a 21-day booking window, 15-minute starts and durations,
-one to four hours, a 10 PM London finish, blocked dates, and £15/hour for
-website reservations. Signed-in app reservations use separate
-`/api/app-reservations` endpoints with a temporary 50p/hour test rate.
+one to four hours, a 10 PM London finish, and blocked dates. Westfield costs
+£15/hour through both website and app endpoints. The Test Pod
+(`25993183-3c63-420b-a8cd-be3ce1283226`) costs 50p/hour through the
+authenticated app endpoints. Public catalogue, availability, and checkout
+endpoints do not expose or accept the Test Pod.
 The browser cannot set the price or mark a booking paid.
 Email retry is handled by the backend worker. Browser code has no delivery controls.
 

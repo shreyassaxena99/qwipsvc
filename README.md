@@ -42,7 +42,7 @@ The scheduled reservation API is implemented in this repository, but its [databa
 <details>
 <summary>Scheduled reservation flow and API</summary>
 
-1. Availability covers today through 21 days ahead. The server enforces at least one hour's notice, starts on 15-minute boundaries, durations of 1–4 hours in 15-minute steps, a 10 PM London finish, blocked dates, and the £15/hour website price. Signed-in app reservations use a temporary 50p/hour live-payment test rate through separate endpoints.
+1. Availability covers today through 21 days ahead. The server enforces at least one hour's notice, starts on 15-minute boundaries, durations of 1–4 hours in 15-minute steps, a 10 PM London finish, and blocked dates. Westfield is £15/hour in both the app and website. The separate Test Pod is 50p/hour for signed-in app testing.
 2. Checkout creates a 10-minute database hold and a Stripe PaymentIntent for the server-calculated amount. A PostgreSQL exclusion constraint prevents overlapping held or paid reservations for the same pod.
 3. The signed reservation Stripe webhook verifies the payment ID, amount, and GBP currency, then atomically marks the booking paid, assigns one code, and queues an email. A payment arriving after hold expiry is refunded.
 4. A private worker sends the code by email. Once that email succeeds, the database queues the booking WhatsApp job. A reminder job is due five minutes before the end.
@@ -52,8 +52,9 @@ The scheduled reservation API is implemented in this repository, but its [databa
 | --- | --- | --- | --- |
 | `GET` | `/api/reservations/availability` | Public | Available starts and durations for a pod and London date. |
 | `POST` | `/api/reservations` | Public | Create hold and payment; returns a Stripe client secret. |
-| `GET` | `/api/app-reservations/availability` | Verified Supabase account | App availability priced at 50p/hour for live-payment testing. |
-| `POST` | `/api/app-reservations` | Verified Supabase account | Create an app hold and payment at the app test rate. |
+| `GET` | `/api/app-reservations/pods` | Verified Supabase account | Include the Test Pod in the app catalogue. |
+| `GET` | `/api/app-reservations/availability` | Verified Supabase account | App availability at the selected pod's price. |
+| `POST` | `/api/app-reservations` | Verified Supabase account | Create an app hold and payment at the selected pod's price. |
 | `GET` | `/api/reservations/{id}/status` | Public | Booking status and whether the code email was sent; never the code. |
 | `GET` | `/api/reservations/me` | Verified Supabase account | Active checkout holds and confirmed booking history; excludes expired holds. |
 | `POST` | `/api/reservations/{id}/resume` | Verified Supabase account | Resume the owner's unexpired checkout with its existing Stripe PaymentIntent. |
