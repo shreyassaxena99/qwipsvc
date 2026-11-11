@@ -1,4 +1,4 @@
-"""Prepaid reservation API. Browser clients never receive provider credentials or door codes."""
+"""Prepaid reservation API. Public clients never receive provider credentials or door codes."""
 
 import logging
 import os
@@ -7,7 +7,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from uuid import UUID
 
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, File, Header, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, EmailStr, Field
 from postgrest.exceptions import APIError
 from stripe import Event
@@ -20,6 +20,10 @@ from svc.reservation_rules import LONDON, TEST_POD_ID, price_for_pod, reservatio
 logger = logging.getLogger(__name__)
 router = APIRouter()
 HOLD_MINUTES = 10
+CHECK_IN_LEAD = timedelta(minutes=15)
+CHECK_IN_PHOTO_MAX_BYTES = 10 * 1024 * 1024
+CHECK_IN_PHOTO_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
+CHECK_IN_PHOTO_BUCKET = "reservation-condition-photos"
 
 
 class ReservationRequest(BaseModel):
@@ -132,13 +136,104 @@ def _verified_account_email(db, authorization: str | None) -> str:
     return user.email.lower()
 
 
+def _owned_reservation(db, reservation_id: UUID, email: str, columns: str) -> dict:
+    rows = (db.table("pod_reservations").select(columns)
+            .eq("id", str(reservation_id)).limit(1).execute().data)
+    if not rows or rows[0]["customer_email"].lower() != email:
+        raise HTTPException(404, "Reservation not found")
+    return rows[0]
+
+
+@router.get("/api/reservations/{reservation_id}/access-code")
+def reservation_access_code(reservation_id: UUID, response: Response,
+                            authorization: str | None = Header(default=None)):
+    """Reveal a current booking's code to its verified owner, regardless of photo status."""
+    db = create_supabase_client()
+    email = _verified_account_email(db, authorization)
+    booking = _owned_reservation(db, reservation_id, email,
+                                 "customer_email,status,end_at,access_code")
+    if (booking["status"] not in ("paid", "confirmed") or
+            datetime.fromisoformat(booking["end_at"]) <= datetime.now(timezone.utc) or
+            not booking.get("access_code")):
+        raise HTTPException(409, "Access code is unavailable for this booking")
+    response.headers["Cache-Control"] = "no-store"
+    return {"access_code": booking["access_code"]}
+
+
+def _valid_photo(data: bytes, content_type: str | None) -> bool:
+    if content_type == "image/jpeg":
+        return data.startswith(b"\xff\xd8\xff")
+    if content_type == "image/png":
+        return data.startswith(b"\x89PNG\r\n\x1a\n")
+    if content_type == "image/webp":
+        return data.startswith(b"RIFF") and data[8:12] == b"WEBP"
+    return False
+
+
+def _discard_orphan_photo(bucket, path: str) -> None:
+    try:
+        bucket.remove([path])
+    except Exception:
+        logger.warning("Could not remove orphan check-in photo path=%s", path, exc_info=True)
+
+
+@router.post("/api/reservations/{reservation_id}/check-in-photo")
+async def upload_reservation_check_in_photo(
+    reservation_id: UUID, photo: UploadFile = File(...),
+    authorization: str | None = Header(default=None),
+):
+    """Store one private, server-timestamped entry-condition image per paid booking."""
+    db = create_supabase_client()
+    email = _verified_account_email(db, authorization)
+    booking = _owned_reservation(db, reservation_id, email,
+                                 "customer_email,status,start_at,end_at,check_in_photo_uploaded_at")
+    if booking.get("check_in_photo_uploaded_at"):
+        return {"check_in_photo_uploaded_at": booking["check_in_photo_uploaded_at"]}
+    now = datetime.now(timezone.utc)
+    if (booking["status"] not in ("paid", "confirmed") or
+            now < datetime.fromisoformat(booking["start_at"]) - CHECK_IN_LEAD or
+            now >= datetime.fromisoformat(booking["end_at"])):
+        raise HTTPException(409, "Check-in photo is only available during your booking")
+    if photo.content_type not in CHECK_IN_PHOTO_TYPES:
+        raise HTTPException(400, "Photo must be JPEG, PNG, or WebP")
+    data = await photo.read(CHECK_IN_PHOTO_MAX_BYTES + 1)
+    if not data or len(data) > CHECK_IN_PHOTO_MAX_BYTES or not _valid_photo(data, photo.content_type):
+        raise HTTPException(400, "Photo is empty, too large, or does not match its file type")
+
+    path = f"{reservation_id}/check-in/{secrets.token_hex(16)}.{CHECK_IN_PHOTO_TYPES[photo.content_type]}"
+    bucket = db.storage.from_(CHECK_IN_PHOTO_BUCKET)
+    bucket.upload(path, data, {"content-type": photo.content_type, "upsert": "false"})
+    try:
+        outcome = db.rpc("record_reservation_check_in_photo", {
+            "p_reservation_id": str(reservation_id),
+            "p_customer_email": email,
+            "p_photo_path": path,
+        }).execute().data
+    except Exception:
+        _discard_orphan_photo(bucket, path)
+        raise
+    if outcome != "saved":
+        _discard_orphan_photo(bucket, path)
+        if outcome == "already_uploaded":
+            latest = _owned_reservation(db, reservation_id, email,
+                                        "customer_email,check_in_photo_uploaded_at")
+            return {"check_in_photo_uploaded_at": latest["check_in_photo_uploaded_at"]}
+        if outcome == "not_found":
+            raise HTTPException(404, "Reservation not found")
+        raise HTTPException(409, "Check-in photo is only available during your booking")
+    latest = _owned_reservation(db, reservation_id, email,
+                                "customer_email,check_in_photo_uploaded_at")
+    logger.info("Reservation check-in photo stored reservation=%s", reservation_id)
+    return {"check_in_photo_uploaded_at": latest["check_in_photo_uploaded_at"]}
+
+
 @router.get("/api/reservations/me")
 def my_reservations(authorization: str | None = Header(default=None)):
     """List active payment holds, confirmed bookings, and paid history without door codes."""
     db = create_supabase_client()
     email = _verified_account_email(db, authorization)
     rows = (db.table("pod_reservations")
-            .select("id,pod_id,pod_label,start_at,end_at,duration_minutes,amount_pence,status,hold_expires_at,stripe_payment_intent_id,access_code,code_emailed_at,customer_cancel_requested_at,stripe_refund_status")
+            .select("id,pod_id,pod_label,start_at,end_at,duration_minutes,amount_pence,status,hold_expires_at,stripe_payment_intent_id,access_code,code_emailed_at,customer_cancel_requested_at,stripe_refund_status,check_in_photo_uploaded_at")
             .eq("customer_email", email)
             .order("start_at", desc=True).execute().data)
     now = datetime.now(timezone.utc)
@@ -160,6 +255,7 @@ def my_reservations(authorization: str | None = Header(default=None)):
             "code_emailed": row.get("code_emailed_at") is not None,
             "customer_cancel_requested_at": row.get("customer_cancel_requested_at"),
             "refund_status": row.get("stripe_refund_status"),
+            "check_in_photo_uploaded_at": row.get("check_in_photo_uploaded_at"),
         })
     return {"bookings": bookings}
 

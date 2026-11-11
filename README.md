@@ -57,6 +57,8 @@ The scheduled reservation API is implemented in this repository, but its [databa
 | `POST` | `/api/app-reservations` | Verified Supabase account | Create an app hold and payment at the selected pod's price. |
 | `GET` | `/api/reservations/{id}/status` | Public | Booking status and whether the code email was sent; never the code. |
 | `GET` | `/api/reservations/me` | Verified Supabase account | Active checkout holds and confirmed booking history; excludes expired holds. |
+| `GET` | `/api/reservations/{id}/access-code` | Verified booking owner | Return the current paid booking's access code. |
+| `POST` | `/api/reservations/{id}/check-in-photo` | Verified booking owner | Store one private entry-condition photo near the booking start. |
 | `POST` | `/api/reservations/{id}/resume` | Verified Supabase account | Resume the owner's unexpired checkout with its existing Stripe PaymentIntent. |
 | `POST` | `/api/reservations/{id}/cancel` | Verified Supabase account | Cancel a paid booking more than one hour before start and request a full Stripe refund. Requires the [customer cancellation migration](migrations/20261111_customer_reservation_cancellation.sql). |
 | `POST` | `/webhook/stripe` | Stripe signature | Confirm a paid reservation from `payment_intent.succeeded`. |

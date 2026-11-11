@@ -76,6 +76,103 @@ def test_my_bookings_requires_authentication():
     assert response.status_code == 401
 
 
+def _verified_booking_db(booking):
+    db = MagicMock()
+    db.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(
+        email="Ada@Example.com", email_confirmed_at="2026-11-01T00:00:00Z"))
+    db.table.return_value.select.return_value.eq.return_value.limit.return_value.execute.return_value.data = [booking]
+    return db
+
+
+def test_access_code_requires_verified_owner_and_paid_current_booking():
+    path = "/api/reservations/00000000-0000-0000-0000-000000000001/access-code"
+    headers = {"Authorization": "Bearer valid-token"}
+    assert TestClient(app).get(path).status_code == 401
+    future_end = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+    booking = {"customer_email": "ada@example.com", "status": "paid",
+               "end_at": future_end, "access_code": "12345"}
+    with patch("svc.reservation_api.create_supabase_client", return_value=_verified_booking_db(booking)):
+        response = TestClient(app).get(path, headers=headers)
+    assert response.status_code == 200
+    assert response.json() == {"access_code": "12345"}
+    assert response.headers["cache-control"] == "no-store"
+
+    for changed, expected in [({"customer_email": "other@example.com"}, 404),
+                              ({"status": "pending"}, 409),
+                              ({"status": "cancelled"}, 409),
+                              ({"access_code": None}, 409),
+                              ({"end_at": (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()}, 409)]:
+        with patch("svc.reservation_api.create_supabase_client",
+                   return_value=_verified_booking_db({**booking, **changed})):
+            response = TestClient(app).get(path, headers=headers)
+        assert response.status_code == expected
+        assert "access_code" not in response.json()
+
+
+def _entry_photo_db(start_offset=-5, end_offset=55, status="paid", uploaded_at=None):
+    booking = {
+        "customer_email": "ada@example.com", "status": status,
+        "start_at": (datetime.now(timezone.utc) + timedelta(minutes=start_offset)).isoformat(),
+        "end_at": (datetime.now(timezone.utc) + timedelta(minutes=end_offset)).isoformat(),
+        "check_in_photo_uploaded_at": uploaded_at,
+    }
+    db = _verified_booking_db(booking)
+    db.rpc.return_value.execute.return_value.data = "saved"
+    return db
+
+
+def test_entry_photo_upload_is_private_and_timestamped():
+    db = _entry_photo_db()
+    path = "/api/reservations/00000000-0000-0000-0000-000000000001/check-in-photo"
+    headers = {"Authorization": "Bearer valid-token"}
+    stamp = datetime.now(timezone.utc).isoformat()
+    with (patch("svc.reservation_api.create_supabase_client", return_value=db),
+          patch("svc.reservation_api._owned_reservation", side_effect=[
+              {"customer_email": "ada@example.com", "status": "paid",
+               "start_at": (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
+               "end_at": (datetime.now(timezone.utc) + timedelta(minutes=55)).isoformat(),
+               "check_in_photo_uploaded_at": None},
+              {"customer_email": "ada@example.com", "check_in_photo_uploaded_at": stamp},
+          ])):
+        response = TestClient(app).post(path, headers=headers,
+            files={"photo": ("arrival.jpg", b"\xff\xd8\xffimage", "image/jpeg")})
+    assert response.status_code == 200
+    assert response.json() == {"check_in_photo_uploaded_at": stamp}
+    db.storage.from_.assert_called_once_with("reservation-condition-photos")
+    upload_args = db.storage.from_.return_value.upload.call_args.args
+    assert upload_args[0].startswith("00000000-0000-0000-0000-000000000001/check-in/")
+    assert upload_args[2] == {"content-type": "image/jpeg", "upsert": "false"}
+    assert "check_in_photo_path" not in response.json()
+    db.rpc.assert_called_once()
+
+
+def test_entry_photo_rejects_early_unpaid_or_invalid_image_without_storage_write():
+    path = "/api/reservations/00000000-0000-0000-0000-000000000001/check-in-photo"
+    headers = {"Authorization": "Bearer valid-token"}
+    assert TestClient(app).post(path, files={"photo": ("x.jpg", b"\xff\xd8\xff", "image/jpeg")}).status_code == 401
+    for db, expected in [(_entry_photo_db(start_offset=30), 409),
+                         (_entry_photo_db(status="pending"), 409),
+                         (_entry_photo_db(), 400)]:
+        data = b"not a real jpeg" if expected == 400 else b"\xff\xd8\xffimage"
+        with patch("svc.reservation_api.create_supabase_client", return_value=db):
+            response = TestClient(app).post(path, headers=headers,
+                files={"photo": ("x.jpg", data, "image/jpeg")})
+        assert response.status_code == expected
+        db.storage.from_.assert_not_called()
+
+
+def test_entry_photo_retry_does_not_overwrite_first_image():
+    stamp = datetime.now(timezone.utc).isoformat()
+    db = _entry_photo_db(uploaded_at=stamp)
+    path = "/api/reservations/00000000-0000-0000-0000-000000000001/check-in-photo"
+    with patch("svc.reservation_api.create_supabase_client", return_value=db):
+        response = TestClient(app).post(path, headers={"Authorization": "Bearer valid-token"},
+            files={"photo": ("x.jpg", b"\xff\xd8\xffimage", "image/jpeg")})
+    assert response.status_code == 200
+    assert response.json() == {"check_in_photo_uploaded_at": stamp}
+    db.storage.from_.assert_not_called()
+
+
 def test_my_bookings_use_verified_email_and_never_return_codes():
     db = MagicMock()
     db.auth.get_user.return_value = SimpleNamespace(user=SimpleNamespace(
@@ -96,6 +193,7 @@ def test_my_bookings_use_verified_email_and_never_return_codes():
     booking = response.json()["bookings"][0]
     assert booking["code_emailed"] is True
     assert "access_code" not in booking
+    assert booking["check_in_photo_uploaded_at"] is None
     assert "stripe_payment_intent_id" not in booking
 
 

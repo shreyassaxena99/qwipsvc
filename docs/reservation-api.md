@@ -30,6 +30,8 @@ Back up the table first. The migration changes live security and messaging behav
 | `POST /api/app-reservations` | Requires a verified Supabase account and matching booking email. Creates an app hold and PaymentIntent at the selected pod's price. |
 | `GET /api/reservations/{id}/status` | Returns status and whether the code email was sent. Never returns the code. |
 | `GET /api/reservations/me` | Requires a Supabase access token. Lists active payment holds and confirmed booking history for the verified account email without access codes. |
+| `GET /api/reservations/{id}/access-code` | Requires the verified booking owner's Supabase access token. Returns the current paid booking's code only. |
+| `POST /api/reservations/{id}/check-in-photo` | Requires the verified booking owner's Supabase access token. Uploads one entry-condition photo near the booking start. |
 | `POST /api/reservations/{id}/resume` | Requires a Supabase access token. Returns the existing PaymentIntent client secret only to the owner while the hold is active. |
 | `POST /api/reservations/{id}/reschedule` | Requires a Supabase access token. Moves the account's paid booking to another time at the same pod and duration. |
 | `POST /api/reservations/{id}/cancel` | Requires a Supabase access token. Cancels the account's paid booking until one hour before start and requests a full Stripe refund. |
@@ -52,6 +54,36 @@ are hidden. An active hold can be completed through `POST /api/reservations/{id}
 the original 10-minute deadline still applies. The resume endpoint returns a
 client secret only after checking the verified account email and Stripe payment
 state. Access codes remain server-side.
+
+## Access code and entry-condition photo
+
+Apply `migrations/20261111_reservation_check_in_photo.sql` before deploying these
+endpoints. It adds private photo metadata to `pod_reservations`, creates the private
+`reservation-condition-photos` Storage bucket, and grants the atomic check-in
+recording function only to the service role. The API never returns the photo URL or
+storage path to the app. The service account needs Supabase Storage write access.
+Before applying it in a shared Supabase project, check existing `storage.objects`
+policies for broad bucket access and exclude `reservation-condition-photos` from any
+anonymous or authenticated read/write policy.
+
+`GET /api/reservations/{id}/access-code` returns `{"access_code":"12345"}`
+only to the verified account whose email matches a paid or confirmed booking with
+an assigned code. The code is available until its scheduled end regardless of
+whether a check-in photo has been uploaded. The response has `Cache-Control: no-store`.
+Missing or invalid authentication returns 401, a booking owned by another account
+returns 404, and a pending, cancelled, past, or code-less booking returns 409.
+The public status endpoint and `GET /api/reservations/me` still never expose the code.
+
+`POST /api/reservations/{id}/check-in-photo` accepts multipart field `photo`
+with JPEG, PNG, or WebP content, maximum 10 MB. The server checks the declared
+type and file signature. It accepts one photo from 15 minutes before the booking
+start until the scheduled end, and returns
+`{"check_in_photo_uploaded_at":"2026-11-11T12:00:00+00:00"}`. The timestamp is
+set by the database; a repeated upload returns the original timestamp without
+replacing the image. `GET /api/reservations/me` includes nullable
+`check_in_photo_uploaded_at` so the app can show check-in status. An unavailable
+window or unpaid booking returns 409. The access code remains available even if
+the camera or upload fails.
 
 ## Rescheduling
 
