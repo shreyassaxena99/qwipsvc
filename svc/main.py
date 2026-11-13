@@ -176,15 +176,32 @@ async def stripe_webhook(request: Request) -> DictWithStringKeys:
 def finalize_booking_request(
     background_tasks: BackgroundTasks, token: str = Depends(get_token)
 ) -> FinalizeBookingResponse:
+    stage = "token verification"
+    setup_intent_id = None
+    pod_id = None
+    session_id = None
     try:
         try:
             payload = verify_jwt_token(token, TokenScope.PROVISIONING)
         except ValueError as exc:
+            logger.info("Booking finalize rejected: invalid provisioning token")
             raise HTTPException(status_code=401, detail=str(exc)) from exc
+        setup_intent_id = payload["setup_intent_id"]
+        pod_id = payload["pod_id"]
+        logger.info("Booking finalize started setup_intent=%s pod=%s", setup_intent_id, pod_id)
+
+        stage = "client creation"
         stripe = create_stripe_client()
         supabase = create_supabase_client()
+        stage = "setup intent retrieval"
         setup_intent_metadata = stripe.setup_intents.retrieve(
-            payload["setup_intent_id"]
+            setup_intent_id
+        )
+        logger.info(
+            "Booking finalize setup intent checked setup_intent=%s pod=%s status=%s",
+            setup_intent_id,
+            pod_id,
+            setup_intent_metadata.status,
         )
 
         if setup_intent_metadata.status != "succeeded":
@@ -192,12 +209,17 @@ def finalize_booking_request(
 
         # for retries (idempotency) - if the setup intent has already been used, return preprocessed session id and
         # provisioning status
+        stage = "existing session lookup"
         pre_existing_session = get_session_by_setup_intent_id(
-            supabase, payload["setup_intent_id"]
+            supabase, setup_intent_id
         )
         if len(pre_existing_session) > 0:
+            session_id = pre_existing_session["id"]
             logger.info(
-                "Previous session found for setup intent, returning existing session ID"
+                "Booking finalize reusing session setup_intent=%s pod=%s session=%s",
+                setup_intent_id,
+                pod_id,
+                session_id,
             )
             session_jwt_token = create_jwt_token(
                 {
@@ -208,8 +230,10 @@ def finalize_booking_request(
                 TokenScope.SESSION,
             )
             return FinalizeBookingResponse(session_jwt_token=session_jwt_token)
+        logger.info("Booking finalize creating session setup_intent=%s pod=%s", setup_intent_id, pod_id)
 
         # now in the new provisioning flow we first create the PodSession object and add it to the database
+        stage = "payment method retrieval"
         customer_id: str = setup_intent_metadata["customer"]
         payment_method: str = setup_intent_metadata["payment_method"]
         payment_method_data = stripe.payment_methods.retrieve(payment_method)
@@ -227,10 +251,18 @@ def finalize_booking_request(
             setup_intent_id=setup_intent_metadata["id"],
         )
 
+        stage = "session creation"
         add_session(supabase, session)
 
         if not session.id:
             raise RuntimeError("Failed to add session to the database")
+        session_id = session.id
+        logger.info(
+            "Booking finalize session created setup_intent=%s pod=%s session=%s",
+            setup_intent_id,
+            pod_id,
+            session_id,
+        )
 
         provision = SessionProvision(
             provision_id=payload["provisioning_id"],
@@ -238,14 +270,17 @@ def finalize_booking_request(
             status=ProvisionStatus.PENDING,
         )
 
+        stage = "provisioning record creation"
         add_provisioning(supabase, provision)
+        logger.info("Booking finalize provisioning pending session=%s", session_id)
 
         # pod should now be blocked from bookings while we generate the
         # access code to prevent anyone else from booking it
+        stage = "pod status update"
         update_pod_status(supabase, session.pod_id, True)
 
         logger.info(
-            f"Pod {session.pod_id} marked as in use, queuing access code provisioning job"
+            "Booking finalize pod marked in use pod=%s session=%s", pod_id, session_id
         )
         # queue the background job to generate the access code and send the email
         session_jwt_token = create_jwt_token(
@@ -263,12 +298,20 @@ def finalize_booking_request(
             use_static_codes=use_static_codes,
         )
 
+        stage = "provisioning job queue"
         background_tasks.add_task(provision_access_code_job, session_metadata)
+        logger.info("Booking finalize provisioning queued session=%s", session_id)
         return FinalizeBookingResponse(session_jwt_token=session_jwt_token)
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("Failed to finalize walk-up booking")
+        logger.exception(
+            "Booking finalize failed stage=%s setup_intent=%s pod=%s session=%s",
+            stage,
+            setup_intent_id,
+            pod_id,
+            session_id,
+        )
         raise HTTPException(status_code=500, detail="Failed to finalize booking") from e
 
 
