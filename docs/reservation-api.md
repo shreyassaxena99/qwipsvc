@@ -85,6 +85,22 @@ replacing the image. `GET /api/reservations/me` includes nullable
 window or unpaid booking returns 409. The access code remains available even if
 the camera or upload fails.
 
+## Departure-condition photo and checkout
+
+Apply `migrations/20261112_reservation_check_out_photo.sql` before deploying the
+checkout endpoint. It adds private departure-photo metadata and an atomic recording
+function, and prevents a check-in photo from being recorded after checkout. The
+existing private `reservation-condition-photos` bucket stores checkout photos.
+
+`POST /api/reservations/{id}/check-out-photo` accepts the same authenticated
+multipart `photo` field, file types, and 10 MB limit as check-in. A paid or confirmed
+booking owner may submit one departure photo from the scheduled start until 30
+minutes after the scheduled end, with or without a check-in photo. The response
+contains only `check_out_photo_uploaded_at`, a database timestamp. A retry returns
+the original timestamp without replacing the photo. `GET /api/reservations/me`
+includes the nullable timestamp. Checkout records departure without changing the
+payment status or revoking the physical access code.
+
 ## Rescheduling
 
 Apply `migrations/20261110_reschedule_paid_reservations.sql` **before** deploying the

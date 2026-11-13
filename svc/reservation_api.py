@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 HOLD_MINUTES = 10
 CHECK_IN_LEAD = timedelta(minutes=15)
+CHECK_OUT_GRACE = timedelta(minutes=30)
 CHECK_IN_PHOTO_MAX_BYTES = 10 * 1024 * 1024
 CHECK_IN_PHOTO_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 CHECK_IN_PHOTO_BUCKET = "reservation-condition-photos"
@@ -186,11 +187,12 @@ async def upload_reservation_check_in_photo(
     db = create_supabase_client()
     email = _verified_account_email(db, authorization)
     booking = _owned_reservation(db, reservation_id, email,
-                                 "customer_email,status,start_at,end_at,check_in_photo_uploaded_at")
+                                 "customer_email,status,start_at,end_at,check_in_photo_uploaded_at,check_out_photo_uploaded_at")
     if booking.get("check_in_photo_uploaded_at"):
         return {"check_in_photo_uploaded_at": booking["check_in_photo_uploaded_at"]}
     now = datetime.now(timezone.utc)
     if (booking["status"] not in ("paid", "confirmed") or
+            booking.get("check_out_photo_uploaded_at") or
             now < datetime.fromisoformat(booking["start_at"]) - CHECK_IN_LEAD or
             now >= datetime.fromisoformat(booking["end_at"])):
         raise HTTPException(409, "Check-in photo is only available during your booking")
@@ -227,13 +229,63 @@ async def upload_reservation_check_in_photo(
     return {"check_in_photo_uploaded_at": latest["check_in_photo_uploaded_at"]}
 
 
+@router.post("/api/reservations/{reservation_id}/check-out-photo")
+async def upload_reservation_check_out_photo(
+    reservation_id: UUID, photo: UploadFile = File(...),
+    authorization: str | None = Header(default=None),
+):
+    """Record one private departure-condition photo and server checkout time."""
+    db = create_supabase_client()
+    email = _verified_account_email(db, authorization)
+    booking = _owned_reservation(db, reservation_id, email,
+                                 "customer_email,status,start_at,end_at,check_out_photo_uploaded_at")
+    if booking.get("check_out_photo_uploaded_at"):
+        return {"check_out_photo_uploaded_at": booking["check_out_photo_uploaded_at"]}
+    now = datetime.now(timezone.utc)
+    if (booking["status"] not in ("paid", "confirmed") or
+            now < datetime.fromisoformat(booking["start_at"]) or
+            now >= datetime.fromisoformat(booking["end_at"]) + CHECK_OUT_GRACE):
+        raise HTTPException(409, "Checkout is only available during your booking or shortly after it ends")
+    if photo.content_type not in CHECK_IN_PHOTO_TYPES:
+        raise HTTPException(400, "Photo must be JPEG, PNG, or WebP")
+    data = await photo.read(CHECK_IN_PHOTO_MAX_BYTES + 1)
+    if not data or len(data) > CHECK_IN_PHOTO_MAX_BYTES or not _valid_photo(data, photo.content_type):
+        raise HTTPException(400, "Photo is empty, too large, or does not match its file type")
+
+    path = f"{reservation_id}/check-out/{secrets.token_hex(16)}.{CHECK_IN_PHOTO_TYPES[photo.content_type]}"
+    bucket = db.storage.from_(CHECK_IN_PHOTO_BUCKET)
+    bucket.upload(path, data, {"content-type": photo.content_type, "upsert": "false"})
+    try:
+        outcome = db.rpc("record_reservation_check_out_photo", {
+            "p_reservation_id": str(reservation_id),
+            "p_customer_email": email,
+            "p_photo_path": path,
+        }).execute().data
+    except Exception:
+        _discard_orphan_photo(bucket, path)
+        raise
+    if outcome != "saved":
+        _discard_orphan_photo(bucket, path)
+        if outcome == "already_uploaded":
+            latest = _owned_reservation(db, reservation_id, email,
+                                        "customer_email,check_out_photo_uploaded_at")
+            return {"check_out_photo_uploaded_at": latest["check_out_photo_uploaded_at"]}
+        if outcome == "not_found":
+            raise HTTPException(404, "Reservation not found")
+        raise HTTPException(409, "Checkout is only available during your booking or shortly after it ends")
+    latest = _owned_reservation(db, reservation_id, email,
+                                "customer_email,check_out_photo_uploaded_at")
+    logger.info("Reservation checkout photo stored reservation=%s", reservation_id)
+    return {"check_out_photo_uploaded_at": latest["check_out_photo_uploaded_at"]}
+
+
 @router.get("/api/reservations/me")
 def my_reservations(authorization: str | None = Header(default=None)):
     """List active payment holds, confirmed bookings, and paid history without door codes."""
     db = create_supabase_client()
     email = _verified_account_email(db, authorization)
     rows = (db.table("pod_reservations")
-            .select("id,pod_id,pod_label,start_at,end_at,duration_minutes,amount_pence,status,hold_expires_at,stripe_payment_intent_id,access_code,code_emailed_at,customer_cancel_requested_at,stripe_refund_status,check_in_photo_uploaded_at")
+            .select("id,pod_id,pod_label,start_at,end_at,duration_minutes,amount_pence,status,hold_expires_at,stripe_payment_intent_id,access_code,code_emailed_at,customer_cancel_requested_at,stripe_refund_status,check_in_photo_uploaded_at,check_out_photo_uploaded_at")
             .eq("customer_email", email)
             .order("start_at", desc=True).execute().data)
     now = datetime.now(timezone.utc)
@@ -256,6 +308,7 @@ def my_reservations(authorization: str | None = Header(default=None)):
             "customer_cancel_requested_at": row.get("customer_cancel_requested_at"),
             "refund_status": row.get("stripe_refund_status"),
             "check_in_photo_uploaded_at": row.get("check_in_photo_uploaded_at"),
+            "check_out_photo_uploaded_at": row.get("check_out_photo_uploaded_at"),
         })
     return {"bookings": bookings}
 
