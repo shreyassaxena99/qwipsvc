@@ -497,7 +497,7 @@ def get_session_status_request(session_id: str) -> DictWithStringKeys:
 
 
 @app.get("/api/lock-status")
-def get_lock_status_request(device_id: str | None) -> GetLockStatusResponse:
+def get_lock_status_request(device_id: str | None = None) -> GetLockStatusResponse:
     try:
         status = False
         if use_static_codes:

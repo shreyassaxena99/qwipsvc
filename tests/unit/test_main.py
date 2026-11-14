@@ -300,6 +300,17 @@ def test_end_session_preview_returns_expected_fields(client):
 
 def test_lock_status_static_mode_returns_locked(client):
     with patch("svc.main.use_static_codes", True):
-        resp = client.get("/api/lock-status?device_id=test_device")
+        resp = client.get("/api/lock-status")
     assert resp.status_code == 200
     assert resp.json()["is_locked"] is True
+
+
+def test_lock_status_without_device_id_checks_default_device(client):
+    with (
+        patch("svc.main.use_static_codes", False),
+        patch("svc.main.is_device_locked", return_value=False) as check_lock,
+    ):
+        resp = client.get("/api/lock-status")
+    assert resp.status_code == 200
+    assert resp.json()["is_locked"] is False
+    check_lock.assert_called_once_with()
