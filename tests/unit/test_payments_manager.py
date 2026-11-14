@@ -1,6 +1,11 @@
 from unittest.mock import ANY, MagicMock, patch
 
-from svc.payments_manager import charge_user, create_stripe_event, create_setup_intent
+from svc.payments_manager import (
+    charge_user,
+    create_stripe_event,
+    create_setup_intent,
+    payment_method_email,
+)
 
 
 @patch("svc.payments_manager.create_stripe_client")
@@ -63,3 +68,15 @@ def test_charge_user_creates_payment_intent(mock_create_client):
             "receipt_email": "user@test.com",
         }
     )
+
+
+def test_payment_method_email_uses_link_email_when_billing_email_missing():
+    assert payment_method_email(
+        {"billing_details": {"email": None}, "link": {"email": "link@test.com"}}
+    ) == "link@test.com"
+
+
+def test_payment_method_email_prefers_billing_email():
+    assert payment_method_email(
+        {"billing_details": {"email": "billing@test.com"}, "link": {"email": "link@test.com"}}
+    ) == "billing@test.com"

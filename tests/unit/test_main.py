@@ -1,5 +1,5 @@
 import io
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from starlette.testclient import TestClient
@@ -74,6 +74,31 @@ def test_finalize_reports_unconfirmed_setup_intent_as_conflict(client):
             headers={"Authorization": f"Bearer {_provisioning_jwt()}"},
         )
     assert response.status_code == 409
+
+
+def test_finalize_reports_missing_payment_method_email(client):
+    setup_intent = MagicMock(status="succeeded")
+    setup_intent.__getitem__.side_effect = {
+        "customer": "cus_test",
+        "payment_method": "pm_test",
+        "id": "si_test",
+    }.__getitem__
+    with (
+        patch("svc.main.create_stripe_client") as stripe_client,
+        patch("svc.main.create_supabase_client"),
+        patch("svc.main.get_session_by_setup_intent_id", return_value={}),
+    ):
+        stripe_client.return_value.setup_intents.retrieve.return_value = setup_intent
+        stripe_client.return_value.payment_methods.retrieve.return_value = {
+            "billing_details": {"email": None},
+            "link": {"email": None},
+        }
+        response = client.post(
+            "/api/booking/finalize",
+            headers={"Authorization": f"Bearer {_provisioning_jwt()}"},
+        )
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Payment method email missing"
 
 
 # ---------------------------------------------------------------------------

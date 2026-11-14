@@ -72,11 +72,18 @@ def get_customer_email(payment_method: str) -> str:
     """
     stripe = create_stripe_client()
     payment_method_data = stripe.payment_methods.retrieve(payment_method)
-    customer_email = payment_method_data["billing_details"]["email"]
+    customer_email = payment_method_email(payment_method_data)
     if not customer_email:
         logger.warning(f"No email found for setup intent {payment_method}")
         return DEFAULT_RECEIPT_EMAIL
     return customer_email
+
+
+def payment_method_email(payment_method_data: DictWithStringKeys) -> str | None:
+    """Read the saved method's billing email, including Link's account email."""
+    billing_details = payment_method_data.get("billing_details") or {}
+    link_details = payment_method_data.get("link") or {}
+    return billing_details.get("email") or link_details.get("email")
 
 
 def charge_user(session: DictWithStringKeys, cost_in_pence: int) -> int:

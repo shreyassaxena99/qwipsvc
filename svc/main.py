@@ -58,6 +58,7 @@ from svc.payments_manager import (
     create_stripe_client,
     create_stripe_event,
     create_setup_intent,
+    payment_method_email,
     process_event,
 )
 from svc.provisioning_manager import (
@@ -237,7 +238,9 @@ def finalize_booking_request(
         customer_id: str = setup_intent_metadata["customer"]
         payment_method: str = setup_intent_metadata["payment_method"]
         payment_method_data = stripe.payment_methods.retrieve(payment_method)
-        customer_email = payment_method_data["billing_details"]["email"]
+        customer_email = payment_method_email(payment_method_data)
+        if not customer_email:
+            raise HTTPException(status_code=422, detail="Payment method email missing")
 
         start_time = datetime.now(timezone.utc)
 
